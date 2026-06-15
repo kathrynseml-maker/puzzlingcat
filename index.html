@@ -1,0 +1,2165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mahjong Solitaire</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&family=Cinzel:wght@700&display=swap');
+
+:root {
+  --gold: #c9a84c;
+  --gold-light: #f0d070;
+  --tile-face: #fdf6e3;
+  --tile-border: #c8a84a;
+  --tile-side-r: #4a1570;
+  --tile-side-b: #360f55;
+  --tile-locked: #c8b87a;
+  --selected-glow: #ffe066;
+  --TW: 52px;
+  --TH: 64px;
+  --TD: 10px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: radial-gradient(ellipse at 50% 20%, #7eccd8 0%, #4a9aaa 80%);
+  min-height: 100vh;
+  font-family: 'Cinzel', serif;
+  color: var(--gold-light);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-x: hidden;
+}
+/* Scattered mahjong symbols as subtle repeating background pattern */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: url("data:image/svg+xml,<svg%20xmlns='http%3A//www.w3.org/2000/svg'%20width='500'%20height='500'%20style='font-family%3ANoto%20Serif%20SC%2Cserif'><text%20x='-20'%20y='320'%20font-family='Noto%20Serif%20SC%2Cserif'%20font-size='320'%20font-weight='700'%20fill='%2523ffffff'%20opacity='0.08'>%E9%BA%BB</text><text%20x='200'%20y='520'%20font-family='Noto%20Serif%20SC%2Cserif'%20font-size='320'%20font-weight='700'%20fill='%2523ffffff'%20opacity='0.08'>%E5%B0%87</text></svg>");
+  background-repeat: repeat;
+  background-size: 500px 500px;
+}
+body::after { display: none; }
+
+header { text-align: center; padding: 16px 20px 6px; z-index: 1; }
+h1 {
+  font-size: clamp(1.3rem, 3.5vw, 2rem);
+  letter-spacing: 0.15em;
+  color: var(--gold-light);
+  text-shadow: 0 0 20px rgba(201,168,76,0.5), 0 2px 4px rgba(0,0,0,0.8);
+}
+h1 span { font-family: 'Noto Serif SC', serif; color: var(--gold); }
+.subtitle {
+  font-size: 0.65rem; letter-spacing: 0.3em;
+  color: var(--gold-light); margin-top: 2px; text-transform: uppercase; text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+}
+
+.stats {
+  display: flex; gap: 24px; justify-content: center; align-items: center;
+  padding: 8px 20px;
+  background: rgba(40,110,125,0.78);
+  border-top: none;
+  border-bottom: none;
+  width: 100%; margin-bottom: 10px; z-index: 1;
+}
+.stat-item { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.stat-label { color: rgba(240,210,100,0.88); font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.2em; }
+.stat-value { color: var(--gold-light); font-size: 0.95rem; font-weight: bold; }
+
+.controls {
+  display: flex; gap: 8px; padding: 0 20px 10px;
+  justify-content: center; flex-wrap: wrap; z-index: 1;
+}
+.btn {
+  padding: 6px 16px;
+  border: 1px solid var(--gold);
+  background: rgba(40,110,125,0.72);
+  color: var(--gold-light);
+  font-family: 'Cinzel', serif;
+  font-size: 0.68rem; letter-spacing: 0.12em;
+  cursor: pointer; border-radius: 2px;
+  transition: all 0.18s; text-transform: uppercase;
+}
+.btn:hover { background: rgba(40,110,125,0.90); box-shadow: 0 0 10px rgba(74,154,170,0.4); }
+.btn:active { transform: scale(0.95); }
+
+#board-wrap {
+  overflow: auto; width: 100%;
+  display: flex; justify-content: center;
+  padding: 10px 10px 24px; z-index: 1;
+}
+#board { position: relative; }
+
+/* ── Tile ── */
+.tile {
+  position: absolute;
+  width: var(--TW); height: var(--TH);
+  cursor: pointer; user-select: none;
+}
+
+/* 3-D side pieces — hidden, drawn as canvas parallelograms in JS */
+.t-side-r { display: none; }
+.t-side-b { display: none; }
+
+/* Thickness canvas sits inside .tile, overflow visible so it paints outside */
+.tile { overflow: visible; }
+.t-thickness {
+  position: absolute;
+  top: 0; left: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Tile face — with top and left inset shadow to show layer depth */
+.t-face {
+  position: absolute; inset: 0;
+  background: linear-gradient(315deg, #c8b49a 0%, #e8d8c8 45%, #ffffff 100%);
+  border: 1.5px solid var(--tile-border);
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow:
+    inset 0 1px 3px rgba(255,255,255,0.9),
+    inset 0 -1px 2px rgba(0,0,0,0.08),
+    inset 3px 3px 5px rgba(0,0,0,0.15),
+    inset -1px -1px 0px rgba(255,255,255,0.45);
+  overflow: hidden; transition: background 0.12s, box-shadow 0.12s;
+}
+.t-face::before, .t-face::after {
+  content: '·'; position: absolute;
+  font-size: 7px; color: rgba(160,120,40,0.35);
+}
+.t-face::before { top: 2px; left: 3px; }
+.t-face::after  { bottom: 2px; right: 3px; }
+
+.t-glyph {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.45em; line-height: 1;
+  pointer-events: none; position: relative; z-index: 1;
+}
+
+/* Suit colours */
+.suit-man    .t-glyph { color: #b22222; }
+.suit-pin    .t-glyph { color: #1a4f8a; }
+.suit-sou    .t-glyph { color: #1d6a2f; }
+.suit-wind   .t-glyph { color: #2c3e50; }
+.suit-dragon .t-glyph { color: #7d1a1a; }
+.suit-flower .t-glyph { color: #7a4a00; font-size: 1.25em; }
+.suit-season .t-glyph { color: #1a4a7a; font-size: 1.25em; }
+
+/* States */
+.tile.locked { cursor: pointer; }
+
+.tile.selected .t-face {
+  background: #fffae0;
+  box-shadow: 0 0 0 2.5px var(--selected-glow), inset 0 0 10px rgba(255,210,40,0.35);
+}
+
+/* ── Layer cast-shadows — absolutely positioned overlays on #board ──
+   Each is a narrow warm-dark gradient strip painted over the exposed
+   portions of the layer below. Pointer-events: none so they don't
+   interfere with clicks. z-index sits just above all tiles. */
+.shadow-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 999999;
+}
+
+.tile.matched { animation: matchPop 0.38s ease-out forwards; pointer-events: none; }
+@keyframes matchPop {
+  0%   { transform: scale(1);    opacity: 1; }
+  35%  { transform: scale(1.14); opacity: 0.85; }
+  100% { transform: scale(0.5);  opacity: 0; }
+}
+
+.tile:not(.locked):not(.matched):hover .t-face { filter: brightness(1.07); }
+
+.tile.hint .t-face { animation: hintPulse 0.55s 2 ease-in-out; }
+@keyframes hintPulse {
+  0%,100% { box-shadow: inset 0 1px 3px rgba(255,255,255,0.95); }
+  50% { box-shadow: 0 0 0 3px gold, 0 0 14px 4px rgba(255,200,0,0.6), inset 0 1px 3px rgba(255,255,255,0.95); }
+}
+
+/* ── Overlay ── */
+#message {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.78);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.35s;
+}
+#message.show { opacity: 1; pointer-events: all; }
+.msg-box {
+  background: linear-gradient(135deg, #2a6e78, #1a4a52);
+  border: 2px solid var(--gold); padding: 30px 52px 40px; text-align: center;
+  box-shadow: 0 0 60px rgba(201,168,76,0.28); border-radius: 4px;
+}
+.msg-title { font-size: 1.9rem; color: var(--gold-light); margin-bottom: 6px; }
+.msg-sub   { font-size: 0.82rem; color: rgba(255,255,255,0.55); margin-bottom: 22px; letter-spacing: 0.08em; }
+
+/* ── Win cat animations ── */
+@keyframes catHeadBob {
+  0%,100% { transform: rotate(0deg); }
+  25%      { transform: rotate(-12deg); }
+  75%      { transform: rotate(10deg); }
+}
+@keyframes catTailWag {
+  0%,100% { transform: rotate(0deg) scaleX(1); }
+  30%      { transform: rotate(25deg) scaleX(1.05); }
+  70%      { transform: rotate(-20deg) scaleX(0.96); }
+}
+@keyframes catBlink {
+  0%,90%,100% { transform: scaleY(1); }
+  95%          { transform: scaleY(0.05); }
+}
+#win-cat { display: block; margin: 0 auto 16px; }
+#win-cat .cat-body   { /* no animation */ }
+#win-cat .cat-head   { /* no animation */ }
+#win-cat .cat-tail   { animation: catTailWag 1s ease-in-out infinite; transform-origin: 5% 90%; }
+#win-cat .cat-eye-r  { animation: catBlink 2s ease-in-out infinite; transform-origin: center; }
+#win-cat .cat-eye-l  { animation: catBlink 2s ease-in-out infinite 0.1s; transform-origin: center; }
+
+#toast {
+  position: fixed; bottom: 28px; left: 50%;
+  transform: translateX(-50%) translateY(60px);
+  background: rgba(26,74,82,0.96); border: 1px solid var(--gold);
+  color: var(--gold-light); font-family: 'Cinzel', serif;
+  font-size: 0.76rem; letter-spacing: 0.1em;
+  padding: 9px 22px; border-radius: 3px;
+  transition: transform 0.3s; z-index: 900; text-align: center;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>麻将</span> Mahjong Solitaire</h1>
+  <div class="subtitle">The Classic Tile Matching Game</div>
+</header>
+
+<div class="stats">
+  <div class="stat-item"><div class="stat-label">Tiles Left</div><div class="stat-value" id="stat-tiles">144</div></div>
+  <div class="stat-item"><div class="stat-label">Matches</div><div class="stat-value" id="stat-matches">0</div></div>
+  <div class="stat-item"><div class="stat-label">Time</div><div class="stat-value" id="stat-time">0:00</div></div>
+  <div class="stat-item"><div class="stat-label">Score</div><div class="stat-value" id="stat-score">0</div></div>
+</div>
+
+<div class="controls">
+  <button class="btn" onclick="newGame()">New Game</button>
+  <button class="btn" onclick="undoMove()">Undo</button>
+  <button class="btn" onclick="hintMove()">Hint</button>
+  <button class="btn" onclick="shuffleRemaining()">Shuffle</button>
+  <button class="btn" onclick="showRules()">Rules &amp; Tips</button>
+</div>
+
+<div id="board-wrap"><div id="board"></div></div>
+
+<div id="message">
+  <div class="msg-box">
+    <!-- Animated win cat -->
+    <svg id="win-cat" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100" width="120" height="100">
+      <!-- TAIL — wags -->
+      <g class="cat-tail">
+        <path d="M78,72 Q100,65 98,50 Q96,38 88,40"
+          stroke="#6b2fa0" stroke-width="7" fill="none" stroke-linecap="round"/>
+        <ellipse cx="88" cy="39" rx="7" ry="5" transform="rotate(20,88,39)" fill="#c9a0dc"/>
+      </g>
+      <!-- BODY — bounces -->
+      <g class="cat-body">
+        <ellipse cx="55" cy="72" rx="28" ry="20" fill="#6b2fa0"/>
+        <ellipse cx="55" cy="76" rx="18" ry="13" fill="#c9a0dc"/>
+        <!-- back legs -->
+        <ellipse cx="36" cy="88" rx="13" ry="7" fill="#6b2fa0"/>
+        <ellipse cx="72" cy="88" rx="13" ry="7" fill="#6b2fa0"/>
+        <!-- paws -->
+        <ellipse cx="34" cy="93" rx="9" ry="5" fill="#c9a0dc"/>
+        <ellipse cx="72" cy="93" rx="9" ry="5" fill="#c9a0dc"/>
+      </g>
+      <!-- HEAD — bobs -->
+      <g class="cat-head">
+        <!-- ears -->
+        <polygon points="35,42 30,28 44,38" fill="#c9a0dc" stroke="#6b2fa0" stroke-width="2" stroke-linejoin="round"/>
+        <polygon points="65,42 56,38 70,28" fill="#c9a0dc" stroke="#6b2fa0" stroke-width="2" stroke-linejoin="round"/>
+        <!-- head circle -->
+        <circle cx="52" cy="52" r="20" fill="#6b2fa0"/>
+        <ellipse cx="49" cy="48" rx="13" ry="9" fill="#c9a0dc" opacity="0.5"/>
+        <!-- right eye -->
+        <g class="cat-eye-r">
+          <ellipse cx="60" cy="49" rx="6" ry="5.5" fill="white" stroke="#4a1570" stroke-width="1.2"/>
+          <path d="M54,49 Q60,43 66,49 Q60,53 54,49Z" fill="#4a1570"/>
+          <circle cx="61" cy="47" r="2" fill="white"/>
+        </g>
+        <!-- left eye -->
+        <g class="cat-eye-l">
+          <ellipse cx="44" cy="49" rx="6" ry="5.5" fill="white" stroke="#4a1570" stroke-width="1.2"/>
+          <path d="M38,49 Q44,43 50,49 Q44,53 38,49Z" fill="#4a1570"/>
+          <circle cx="45" cy="47" r="2" fill="white"/>
+        </g>
+        <!-- nose -->
+        <circle cx="52" cy="57" r="2.5" fill="#4a1570"/>
+        <!-- W smile -->
+        <path d="M44,60 Q48,65 52,61 Q56,65 60,60"
+          stroke="#4a1570" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <!-- whiskers left -->
+        <line x1="46" y1="57" x2="30" y2="54" stroke="#c9a0dc" stroke-width="1.2" stroke-linecap="round"/>
+        <line x1="46" y1="59" x2="29" y2="59" stroke="#c9a0dc" stroke-width="1.2" stroke-linecap="round"/>
+        <!-- whiskers right -->
+        <line x1="58" y1="57" x2="74" y2="54" stroke="#c9a0dc" stroke-width="1.2" stroke-linecap="round"/>
+        <line x1="58" y1="59" x2="75" y2="59" stroke="#c9a0dc" stroke-width="1.2" stroke-linecap="round"/>
+      </g>
+    </svg>
+    <div class="msg-title" id="msg-title">You Win!</div>
+    <div class="msg-sub"  id="msg-sub">All tiles cleared.</div>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+      <button class="btn" onclick="newGame();hideMessage()">Play Again</button>
+      <button class="btn" id="btn-shuffle-msg" onclick="hideMessage();shuffleRemaining()" style="display:none">Shuffle</button>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<div id="rules-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.78);
+  display:none;align-items:center;justify-content:center;z-index:1001;">
+  <div class="msg-box" style="max-width:420px;text-align:left;">
+    <div class="msg-title" style="text-align:center;margin-bottom:16px;">Rules &amp; Tips</div>
+
+    <p style="color:var(--gold-light);font-family:'Cinzel',serif;font-size:0.78rem;
+       letter-spacing:0.08em;margin-bottom:12px;line-height:1.7;">
+      <strong style="color:var(--gold);">How to play:</strong><br>
+      Match and remove pairs of identical free tiles to clear the board.
+      A tile is free when nothing sits on top of it and at least one side (left or right) is open.
+    </p>
+
+    <p style="color:var(--gold-light);font-family:'Cinzel',serif;font-size:0.78rem;
+       letter-spacing:0.08em;margin-bottom:8px;line-height:1.7;">
+      <strong style="color:var(--gold);">Special matching sets:</strong>
+    </p>
+    <p style="color:var(--gold-light);font-family:'Cinzel',serif;font-size:0.74rem;
+       letter-spacing:0.06em;margin-bottom:6px;line-height:1.6;">
+      · <em>Flowers</em> — any two flower tiles match each other:
+    </p>
+    <div style="display:flex;gap:6px;margin-bottom:10px;justify-content:flex-start;">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 46 58" width="36" height="46" style="border:1px solid #c8a84a;border-radius:3px;background:#fdf6e3;">
+        <rect width="46" height="58" rx="3" fill="#2d7a3a"/>
+        <!-- Plum: 5 red petals -->
+        <circle cx="23" cy="20" r="7.5" fill="#e8354a" opacity="0.92"/>
+        <circle cx="14" cy="26" r="7.5" fill="#e8354a" opacity="0.92"/>
+        <circle cx="32" cy="26" r="7.5" fill="#e8354a" opacity="0.92"/>
+        <circle cx="16" cy="36" r="7.5" fill="#e8354a" opacity="0.92"/>
+        <circle cx="30" cy="36" r="7.5" fill="#e8354a" opacity="0.92"/>
+        <circle cx="23" cy="29" r="3.5" fill="#fff9e6"/>
+      </svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 46 58" width="36" height="46" style="border:1px solid #c8a84a;border-radius:3px;background:#fdf6e3;">
+        <rect width="46" height="58" rx="3" fill="#2d7a3a"/>
+        <!-- Orchid: purple petals -->
+        <ellipse cx="23" cy="15" rx="5.5" ry="9" fill="#8e44c8" opacity="0.9"/>
+        <ellipse cx="13" cy="22" rx="5" ry="8.5" transform="rotate(-35,13,22)" fill="#8e44c8" opacity="0.9"/>
+        <ellipse cx="33" cy="22" rx="5" ry="8.5" transform="rotate(35,33,22)" fill="#8e44c8" opacity="0.9"/>
+        <ellipse cx="23" cy="34" rx="5" ry="6.5" fill="#d4aaff" opacity="0.9"/>
+      </svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 46 58" width="36" height="46" style="border:1px solid #c8a84a;border-radius:3px;background:#fdf6e3;">
+        <rect width="46" height="58" rx="3" fill="#2d7a3a"/>
+        <!-- Chrysanthemum: yellow petals -->
+        <ellipse cx="23" cy="11" rx="3.2" ry="8" transform="rotate(0,23,11)" fill="#e8c520" opacity="0.9"/>
+        <ellipse cx="29" cy="13" rx="3.2" ry="8" transform="rotate(30,29,13)" fill="#e8c520" opacity="0.9"/>
+        <ellipse cx="33" cy="19" rx="3.2" ry="8" transform="rotate(60,33,19)" fill="#e8c520" opacity="0.9"/>
+        <ellipse cx="33" cy="26" rx="3.2" ry="8" transform="rotate(90,33,26)" fill="#e8c520" opacity="0.9"/>
+        <ellipse cx="29" cy="33" rx="3.2" ry="8" transform="rotate(120,29,33)" fill="#e8c520" opacity="0.9"/>
+        <ellipse cx="23" cy="36" rx="3.2" ry="8" transform="rotate(150,23,36)" fill="#e8c520" opacity="0.9"/>
+        <ellipse cx="17" cy="33" rx="3.2" ry="8" transform="rotate(180,17,33)" fill="#e8c520" opacity="0.9"/>
+        <ellipse cx="13" cy="26" rx="3.2" ry="8" transform="rotate(210,13,26)" fill="#e8c520" opacity="0.9"/>
+        <ellipse cx="13" cy="19" rx="3.2" ry="8" transform="rotate(240,13,19)" fill="#e8c520" opacity="0.9"/>
+        <ellipse cx="17" cy="13" rx="3.2" ry="8" transform="rotate(270,17,13)" fill="#e8c520" opacity="0.9"/>
+        <circle cx="23" cy="23" r="5.5" fill="#fff176"/>
+      </svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 46 58" width="36" height="46" style="border:1px solid #c8a84a;border-radius:3px;background:#fdf6e3;">
+        <rect width="46" height="58" rx="3" fill="#2d7a3a"/>
+        <!-- Lotus: pink petals -->
+        <ellipse cx="23" cy="12" rx="4" ry="9" fill="#f48fb1" opacity="0.88"/>
+        <ellipse cx="30" cy="15" rx="4" ry="9" transform="rotate(45,30,15)" fill="#f48fb1" opacity="0.88"/>
+        <ellipse cx="34" cy="23" rx="4" ry="9" transform="rotate(90,34,23)" fill="#f48fb1" opacity="0.88"/>
+        <ellipse cx="30" cy="31" rx="4" ry="9" transform="rotate(135,30,31)" fill="#f48fb1" opacity="0.88"/>
+        <ellipse cx="16" cy="15" rx="4" ry="9" transform="rotate(-45,16,15)" fill="#f48fb1" opacity="0.88"/>
+        <ellipse cx="12" cy="23" rx="4" ry="9" transform="rotate(-90,12,23)" fill="#f48fb1" opacity="0.88"/>
+        <ellipse cx="16" cy="31" rx="4" ry="9" transform="rotate(-135,16,31)" fill="#f48fb1" opacity="0.88"/>
+        <circle cx="23" cy="23" r="4.5" fill="#ffe0b2"/>
+      </svg>
+    </div>
+    <p style="color:var(--gold-light);font-family:'Cinzel',serif;font-size:0.74rem;
+       letter-spacing:0.06em;margin-bottom:6px;line-height:1.6;">
+      · <em>Seasons</em> — any two season tiles match each other:
+    </p>
+    <div style="display:flex;gap:6px;margin-bottom:12px;justify-content:flex-start;">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 46 58" width="36" height="46" style="border:1px solid #c8a84a;border-radius:3px;background:#fdf6e3;">
+        <!-- Spring: cherry blossoms -->
+        <path d="M23,54 Q20,44 23,10 Q18,8 15,14 Q12,8 18,4" stroke="#8b5e3c" stroke-width="2.5" fill="none"/>
+        <circle cx="15" cy="18" r="4" fill="#f8a0b8" opacity="0.9"/>
+        <circle cx="10" cy="14" r="3.5" fill="#f8a0b8" opacity="0.9"/>
+        <circle cx="20" cy="12" r="4" fill="#f8a0b8" opacity="0.9"/>
+        <circle cx="28" cy="16" r="3.5" fill="#f8a0b8" opacity="0.9"/>
+        <circle cx="32" cy="10" r="3" fill="#f8a0b8" opacity="0.85"/>
+        <circle cx="15" cy="18" r="1.5" fill="#f06292"/>
+        <circle cx="20" cy="12" r="1.5" fill="#f06292"/>
+      </svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 46 58" width="36" height="46" style="border:1px solid #c8a84a;border-radius:3px;background:#fdf6e3;">
+        <!-- Summer: sun -->
+        <line x1="23" y1="5" x2="23" y2="12" stroke="#f39c12" stroke-width="2" stroke-linecap="round"/>
+        <line x1="23" y1="38" x2="23" y2="45" stroke="#f39c12" stroke-width="2" stroke-linecap="round"/>
+        <line x1="5" y1="25" x2="12" y2="25" stroke="#f39c12" stroke-width="2" stroke-linecap="round"/>
+        <line x1="34" y1="25" x2="41" y2="25" stroke="#f39c12" stroke-width="2" stroke-linecap="round"/>
+        <line x1="9" y1="9" x2="14" y2="14" stroke="#f39c12" stroke-width="2" stroke-linecap="round"/>
+        <line x1="32" y1="36" x2="37" y2="41" stroke="#f39c12" stroke-width="2" stroke-linecap="round"/>
+        <line x1="37" y1="9" x2="32" y2="14" stroke="#f39c12" stroke-width="2" stroke-linecap="round"/>
+        <line x1="9" y1="41" x2="14" y2="36" stroke="#f39c12" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="23" cy="25" r="10" fill="#f1c40f"/>
+        <circle cx="23" cy="25" r="7" fill="#f39c12"/>
+      </svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 46 58" width="36" height="46" style="border:1px solid #c8a84a;border-radius:3px;background:#fdf6e3;">
+        <!-- Autumn: maple leaf -->
+        <path d="M23,8 L26,14 L33,11 L30,18 L38,17 L33,23 L36,30 L28,27 L26,34 L23,22 L20,34 L18,27 L10,30 L13,23 L8,17 L16,18 L13,11 L20,14 Z"
+          fill="#e74c3c" opacity="0.9"/>
+        <line x1="23" y1="8" x2="23" y2="48" stroke="#8b5e3c" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 46 58" width="36" height="46" style="border:1px solid #c8a84a;border-radius:3px;background:#fdf6e3;">
+        <!-- Winter: snowflake -->
+        <line x1="23" y1="5" x2="23" y2="45" stroke="#5dade2" stroke-width="2" stroke-linecap="round"/>
+        <line x1="5" y1="25" x2="41" y2="25" stroke="#5dade2" stroke-width="2" stroke-linecap="round"/>
+        <line x1="9" y1="9" x2="37" y2="41" stroke="#5dade2" stroke-width="2" stroke-linecap="round"/>
+        <line x1="37" y1="9" x2="9" y2="41" stroke="#5dade2" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="23" cy="25" r="3" fill="#5dade2"/>
+      </svg>
+    </div>
+    <p style="color:var(--gold-light);font-family:'Cinzel',serif;font-size:0.74rem;
+       letter-spacing:0.06em;margin-bottom:12px;line-height:1.6;">
+      All other tiles match only their identical pair.
+    </p>
+
+    <p style="color:var(--gold-light);font-family:'Cinzel',serif;font-size:0.78rem;
+       letter-spacing:0.08em;margin-bottom:20px;line-height:1.7;">
+      <strong style="color:var(--gold);">Tip:</strong><br>
+      Stuck? Use <em>Shuffle</em> to rearrange the remaining tiles without starting a new game —
+      it keeps your progress and may open new possibilities.
+    </p>
+
+    <div style="text-align:center;">
+      <button class="btn" onclick="hideRules()">Got it!</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+//  SOUNDS — Web Audio API, no external files needed
+// ════════════════════════════════════════════════════════════════
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+// Muted woody click — like a finger tap on wood, no tonal quality
+function playClick() {
+  try {
+    const ctx = getAudio();
+    // Short noise burst filtered to low freq — muffled click
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.04, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++)
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i/data.length, 8);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(400, ctx.currentTime);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.35, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
+    src.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+    src.start(ctx.currentTime);
+  } catch(e) {}
+}
+
+// Swoosh match — soft whoosh using filtered noise, no glassy tone
+function playMatch() {
+  try {
+    const ctx = getAudio();
+    // Noise swoosh — filtered and swept
+    const dur = 0.55;  // longer
+    const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++)
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i/data.length, 1.2);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(180, ctx.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + dur);
+    filter.Q.setValueAtTime(1.2, ctx.currentTime);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.10, ctx.currentTime + 0.05);  // softer
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    src.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+    src.start(ctx.currentTime);
+    // Soft low thud at start
+    const thud = ctx.createBuffer(1, ctx.sampleRate * 0.07, ctx.sampleRate);
+    const td = thud.getChannelData(0);
+    for (let i = 0; i < td.length; i++)
+      td[i] = (Math.random() * 2 - 1) * Math.pow(1 - i/td.length, 5);
+    const ts = ctx.createBufferSource(); ts.buffer = thud;
+    const tf = ctx.createBiquadFilter(); tf.type = 'lowpass'; tf.frequency.value = 280;
+    const tg = ctx.createGain(); tg.gain.setValueAtTime(0.14, ctx.currentTime);
+    tg.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.07);
+    ts.connect(tf); tf.connect(tg); tg.connect(ctx.destination);
+    ts.start(ctx.currentTime);
+  } catch(e) {}
+}
+
+// Purring — long purr tone then short silence, like a real cat
+// "puuuurrrrr" (1.2s) ... pause (0.3s) ... repeat
+let purrInterval = null;
+let purrNode = null;
+let purrGain = null;
+
+function startPurr() {
+  stopPurr();
+  try {
+    const ctx = getAudio();
+    if (ctx.state === 'suspended') ctx.resume();
+
+    // Low-frequency oscillator purr — simple and reliable
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.value = 80;
+
+    // Slow tremolo via gain LFO
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    lfo.frequency.value = 25;
+    lfo.type = 'sine';
+    lfoGain.gain.value = 0.04;
+    lfo.connect(lfoGain);
+    lfoGain.connect(gain.gain);
+
+    gain.gain.value = 0.07;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    lfo.start();
+    purrNode = osc;
+    purrGain = gain;
+
+    // Pulse on/off: 1.2s on, 0.3s off
+    const purrDur = 1200, pauseDur = 300;
+    function scheduleBurst() {
+      try {
+        const now = ctx.currentTime;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.07, now + 0.08);
+        gain.gain.setValueAtTime(0.07, now + purrDur/1000 - 0.1);
+        gain.gain.linearRampToValueAtTime(0, now + purrDur/1000);
+      } catch(e) {}
+    }
+    scheduleBurst();
+    purrInterval = setInterval(scheduleBurst, purrDur + pauseDur);
+
+    // Also stop lfo when stopped
+    purrNode._lfo = lfo;
+  } catch(e) { console.log('purr error', e); }
+}
+
+function stopPurr() {
+  if (purrInterval) { clearInterval(purrInterval); purrInterval = null; }
+  try {
+    if (purrGain) { purrGain.gain.cancelScheduledValues(0); purrGain.gain.setValueAtTime(0, 0); }
+    if (purrNode) { try { purrNode._lfo && purrNode._lfo.stop(); } catch(e){} purrNode.stop(); }
+  } catch(e) {}
+  purrNode = null; purrGain = null;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  TILE POOL — 144 tiles
+// ════════════════════════════════════════════════════════════════
+const TILE_TYPES = [
+  // Cat (1): 4 tiles, all match — glyph='cat'
+  {suit:'cat', glyph:'cat', n:4, matchId:'cat'},
+  // Dots 2–9: 4 each = 32 tiles, match within number
+  ...[2,3,4,5,6,7,8,9].map(g=>({suit:'dot', glyph:String(g), n:4, matchId:'dot_'+g})),
+  // Seasons: 4 total, all match
+  ...['春','夏','秋','冬'].map(g=>({suit:'season', glyph:g, n:1, matchId:'season'})),
+  // Flowers: 4 total, all match
+  ...['梅','蘭','菊','竹'].map(g=>({suit:'flower2', glyph:g, n:1, matchId:'flower'})),
+  // Bamboo 1–9: 4 each = 36, match within number
+  ...[1,2,3,4,5,6,7,8,9].map(g=>({suit:'bamboo', glyph:String(g), n:4, matchId:'bam_'+g})),
+  // Winds: 4 types × 4 = 16, match within type
+  {suit:'wind', glyph:'east',  n:4, matchId:'wind_east'},
+  {suit:'wind', glyph:'south', n:4, matchId:'wind_south'},
+  {suit:'wind', glyph:'west',  n:4, matchId:'wind_west'},
+  {suit:'wind', glyph:'north', n:4, matchId:'wind_north'},
+  // Numbers 1–9 (Chinese characters): 4 each = 36, match within number
+  ...[1,2,3,4,5,6,7,8,9].map(g=>({suit:'num', glyph:String(g), n:4, matchId:'num_'+g})),
+  // Dragons: 3 × 4 = 12, match within type
+  {suit:'dragon', glyph:'zhong', n:4, matchId:'dragon_zhong'},
+  {suit:'dragon', glyph:'fa',    n:4, matchId:'dragon_fa'},
+  {suit:'dragon', glyph:'bai',   n:4, matchId:'dragon_bai'},
+];
+
+function buildTilePool() {
+  const pool = [];
+  for (const d of TILE_TYPES) {
+    const mid = d.matchId || (d.suit+'_'+d.glyph);
+    for (let k = 0; k < d.n; k++) pool.push({suit:d.suit, glyph:d.glyph, matchId:mid});
+  }
+  return pool; // 144
+}
+
+// ════════════════════════════════════════════════════════════════
+//  TURTLE LAYOUT — 144 tiles across 5 layers (z = 0..4)
+//
+//  Coordinates: c=column, r=row (may be fractional for apex tile)
+//  Each tile occupies [c, c+1) × [r, r+1) in layout space.
+//
+//  z=0  Yellow  103 tiles  turtle body + tail (1) + head (2)
+//  z=1  Green    24 tiles  6 cols × 4 rows inner rectangle
+//  z=2  Blue     12 tiles  4 cols × 3 rows inner rectangle
+//  z=3  Fuchsia   4 tiles  2×2 center block
+//  z=4  Red       1 tile   apex, fractional offset (sits on all 4 fuchsia)
+//  Total         144 ✓
+//
+//  FREE RULE:
+//    Tile is free iff:
+//      (1) No higher-layer tile overlaps it (even partially), AND
+//      (2) It has no same-layer tile immediately to its LEFT, OR
+//          it has no same-layer tile immediately to its RIGHT.
+// ════════════════════════════════════════════════════════════════
+const LAYOUT = (() => {
+  const P = [];
+
+  // ══════════════════════════════════════════════════════════════
+  //  z=0  TURTLE BASE — 87 tiles
+  //
+  //  Body spans cols 0-11 (12 wide), rows 0-7 (8 tall).
+  //  Layout is symmetric both horizontally and vertically.
+  //
+  //  Row widths (top to bottom):
+  //    row 0 : 12 tiles  cols 0-11
+  //    row 1 :  8 tiles  cols 2-9
+  //    row 2 : 10 tiles  cols 1-10
+  //    row 3 : 12 tiles  cols 0-11
+  //    row 4 : 12 tiles  cols 0-11   (mirror of row 3)
+  //    row 5 : 10 tiles  cols 1-10   (mirror of row 2)
+  //    row 6 :  8 tiles  cols 2-9    (mirror of row 1)
+  //    row 7 : 12 tiles  cols 0-11   (mirror of row 0)
+  //  Subtotal body: 12+8+10+12+12+10+8+12 = 84
+  //
+  //  Tail : 1 tile at col -1, r=3.5  (centred between rows 3 & 4)
+  //         Left side always open → FREE at start.
+  //         Blocks col-0 tiles in rows 3 & 4 on their left.
+  //
+  //  Head : 2 tiles at r=3.5 (same half-row as tail)
+  //         col 12 = inner head  (left blocked by body col 11,
+  //                               right blocked by outer head → NOT free)
+  //         col 13 = outer head  (right side open → FREE at start)
+  //  Total z=0: 84 + 1 + 2 = 87 ✓
+  // ══════════════════════════════════════════════════════════════
+  for (let c = 0; c <= 11; c++) P.push({c, r:0, z:0});   // row 0 : 12
+  for (let c = 2; c <=  9; c++) P.push({c, r:1, z:0});   // row 1 :  8
+  for (let c = 1; c <= 10; c++) P.push({c, r:2, z:0});   // row 2 : 10
+  for (let c = 0; c <= 11; c++) P.push({c, r:3, z:0});   // row 3 : 12
+  for (let c = 0; c <= 11; c++) P.push({c, r:4, z:0});   // row 4 : 12
+  for (let c = 1; c <= 10; c++) P.push({c, r:5, z:0});   // row 5 : 10
+  for (let c = 2; c <=  9; c++) P.push({c, r:6, z:0});   // row 6 :  8
+  for (let c = 0; c <= 11; c++) P.push({c, r:7, z:0});   // row 7 : 12
+  P.push({c:-1,  r:3.5, z:0});   // tail  (left open → free)
+  P.push({c:12,  r:3.5, z:0});   // inner head (both sides blocked → not free)
+  P.push({c:13,  r:3.5, z:0});   // outer head (right open → free)
+
+  // ══════════════════════════════════════════════════════════════
+  //  z=1  GREEN LAYER — 6×6 = 36 tiles
+  //  Centred on body centre (col 5.5, row 3.5)
+  //  → cols 3-8, rows 1-6
+  // ══════════════════════════════════════════════════════════════
+  for (let r = 1; r <= 6; r++) for (let c = 3; c <= 8; c++) P.push({c, r, z:1});
+
+  // ══════════════════════════════════════════════════════════════
+  //  z=2  BLUE LAYER — 4×4 = 16 tiles
+  //  Centred on layer-1 centre (col 5.5, row 3.5)
+  //  → cols 4-7, rows 2-5
+  // ══════════════════════════════════════════════════════════════
+  for (let r = 2; r <= 5; r++) for (let c = 4; c <= 7; c++) P.push({c, r, z:2});
+
+  // ══════════════════════════════════════════════════════════════
+  //  z=3  FUCHSIA LAYER — 2×2 = 4 tiles
+  //  Centred on layer-2 centre (col 5.5, row 3.5)
+  //  → cols 5-6, rows 3-4
+  // ══════════════════════════════════════════════════════════════
+  for (let r = 3; r <= 4; r++) for (let c = 5; c <= 6; c++) P.push({c, r, z:3});
+
+  // ══════════════════════════════════════════════════════════════
+  //  z=4  RED APEX — 1 tile
+  //  Fractional position (5.5, 3.5) so it overlaps all 4 fuchsia
+  //  tiles simultaneously, blocking all of them until removed.
+  // ══════════════════════════════════════════════════════════════
+  P.push({c:5.5, r:3.5, z:4});
+
+  // Grand total: 87 + 36 + 16 + 4 + 1 = 144 ✓
+  return P;
+})();
+
+// ════════════════════════════════════════════════════════════════
+//  FREE-TILE HELPERS
+// ════════════════════════════════════════════════════════════════
+
+// Does tile B (one layer above A) overlap A's footprint?
+function overlapsAbove(a, b) {
+  if (b.z !== a.z + 1) return false;
+  // Each tile spans [c, c+1) × [r, r+1)
+  return b.c < a.c + 1 && b.c + 1 > a.c &&
+         b.r < a.r + 1 && b.r + 1 > a.r;
+}
+
+// Does same-layer tile B block A on A's LEFT side?
+// B blocks A's left if B's right edge (b.c+1) == A's left edge (a.c)
+// and their row ranges overlap.
+function blocksLeft(a, b) {
+  if (b === a || b.z !== a.z) return false;
+  return Math.abs((b.c + 1) - a.c) < 0.01 &&
+         b.r < a.r + 1 && b.r + 1 > a.r;
+}
+
+// Does same-layer tile B block A on A's RIGHT side?
+function blocksRight(a, b) {
+  if (b === a || b.z !== a.z) return false;
+  return Math.abs((a.c + 1) - b.c) < 0.01 &&
+         b.r < a.r + 1 && b.r + 1 > a.r;
+}
+
+function isFree(tile, allTiles) {
+  if (tile.removed) return false;
+
+  // Condition 1: no tile on a higher layer overlaps this one
+  if (allTiles.some(o => !o.removed && overlapsAbove(tile, o))) return false;
+
+  // Condition 2: left OR right side is open (no same-layer neighbour there)
+  const leftBlocked  = allTiles.some(o => !o.removed && blocksLeft(tile, o));
+  const rightBlocked = allTiles.some(o => !o.removed && blocksRight(tile, o));
+  return !leftBlocked || !rightBlocked;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  RENDERING
+// ════════════════════════════════════════════════════════════════
+const TW    = 52;   // tile width  (px)
+const TH    = 64;   // tile height (px)
+const DEPTH = 10;   // px shift per layer for 3-D effect
+const MARGIN_X = 60; // left margin (room for tail)
+const MARGIN_Y = 20;
+
+function tilePixelPos(t) {
+  const x  = t.c * TW - t.z * DEPTH + MARGIN_X;
+  const y  = t.r * TH - t.z * DEPTH + MARGIN_Y;
+  // z-index: higher layer always on top; within same layer, higher row = closer to viewer
+  const zi = t.z * 100000 + Math.round(t.r * 1000) + Math.round(t.c * 10);
+  return { x, y, zi };
+}
+
+// ════════════════════════════════════════════════════════════════
+//  GAME STATE
+// ════════════════════════════════════════════════════════════════
+let tiles    = [];
+let selected = null;
+let matches  = 0;
+let score    = 0;
+let history  = [];
+let timer    = null;
+let elapsed  = 0;
+let gameOver = false;
+
+function newGame() {
+  clearInterval(timer);
+  elapsed = matches = score = 0;
+  selected = null; history = []; gameOver = false;
+  updateStats();
+
+  const pool = buildTilePool();
+  shuffle(pool);
+
+  tiles = LAYOUT.map((pos, i) => ({
+    id: i,
+    c: pos.c, r: pos.r, z: pos.z,
+    suit: pool[i].suit,
+    glyph: pool[i].glyph,
+    matchId: pool[i].matchId,
+    removed: false,
+    el: null,
+  }));
+
+  renderBoard();
+  startTimer();
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+function renderBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+
+  // Compute board bounding box
+  let maxX = 0, maxY = 0;
+  tiles.forEach(t => {
+    const {x, y} = tilePixelPos(t);
+    maxX = Math.max(maxX, x + TW + DEPTH + 8);
+    maxY = Math.max(maxY, y + TH + DEPTH + 8);
+  });
+  board.style.width  = maxX + 'px';
+  board.style.height = maxY + 'px';
+
+  // Painter's order: lower z first, then lower row, then lower col
+  const sorted = [...tiles].sort((a,b) =>
+    a.z !== b.z ? a.z - b.z : a.r !== b.r ? a.r - b.r : a.c - b.c
+  );
+
+  sorted.forEach(t => {
+    t.el = makeTileEl(t);
+    board.appendChild(t.el);
+    placeTile(t);
+  });
+
+  refreshFreeState();
+}
+
+// ── Shadow rendering ─────────────────────────────────────────────────
+// Shadows fall on the LOWER layer tile faces, at the boundary where the
+// upper layer's edge passes over them — like a tree shadow on the ground.
+// Each shadow is a narrow warm-dark gradient strip, ~1/7 of tile size.
+// Intensity increases with layer height (apex = darkest).
+
+// All shadows same intensity (matching level 4→3):
+const SHADOW_C = 'rgba(40,10,60,0.88)';
+const SHADOW_COLOUR = [null, SHADOW_C, SHADOW_C, SHADOW_C, SHADOW_C];
+
+const SS_W = Math.round(TW / 7);  // ~7px strip width
+const SS_H = Math.round(TH / 7);  // ~9px strip height
+
+function tileX(c, z) { return c * TW - z * DEPTH + MARGIN_X; }
+function tileY(r, z) { return r * TH - z * DEPTH + MARGIN_Y; }
+
+// Draw a smooth L-shaped shadow using a canvas.
+// cornerX, cornerY = top-left of the L bounding box.
+// vertH     = height of vertical strip (0 = no vertical strip).
+// horizW    = width of horizontal strip (0 = no horizontal strip).
+// colour    = rgba string for max opacity.
+// showCorner = whether to draw the corner square (default true).
+function drawLShadow(board, cornerX, cornerY, vertH, horizW, colour, showCorner = true) {
+  const m = colour.match(/rgba\((\d+),(\d+),(\d+),([\d.]+)\)/);
+  const r = +m[1], g = +m[2], b = +m[3], a = +m[4];
+  const C  = (alpha) => 'rgba('+r+','+g+','+b+','+alpha+')';
+
+  const canvasW = SS_W + horizW;
+  const canvasH = SS_H + vertH;
+
+  const cv = document.createElement('canvas');
+  cv.className = 'shadow-overlay';
+  cv.width  = canvasW;
+  cv.height = canvasH;
+  cv.style.cssText = 'left:'+cornerX+'px;top:'+cornerY+'px;width:'+canvasW+'px;height:'+canvasH+'px;';
+  const ctx = cv.getContext('2d');
+
+  // ── Vertical strip: x=0..SS_W, y=SS_H..canvasH ───────────────────
+  // Left-right gradient: darkest at right (x=SS_W), transparent at left (x=0)
+  // Bottom end: diagonal clip — darkest at bottom-right, transparent at bottom-left.
+  // We draw the strip then use a diagonal gradient mask at the bottom to taper it.
+  {
+    // Main body of vertical strip (all but bottom taper zone)
+    const taperH = SS_H; // height of the diagonal taper zone at the bottom
+    const mainH  = vertH - taperH;
+
+    // Solid gradient body
+    if (mainH > 0) {
+      const grad = ctx.createLinearGradient(SS_W, 0, 0, 0);
+      grad.addColorStop(0, C(a));
+      grad.addColorStop(1, C(0));
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, SS_H, SS_W, mainH);
+    }
+
+    // Diagonal taper at the bottom of the vertical strip:
+    // Draw pixel-column by pixel-column: each column x has full height from
+    // its top down to a diagonal bottom edge. The diagonal goes from
+    // bottom = canvasH at x=SS_W (right, darkest) to bottom = canvasH-taperH at x=0 (left, transparent).
+    // We use a clipped polygon + the same left-right gradient.
+    const grad = ctx.createLinearGradient(SS_W, 0, 0, 0);
+    grad.addColorStop(0, C(a));
+    grad.addColorStop(1, C(0));
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    // Top-left of taper zone
+    ctx.moveTo(0, SS_H + mainH);
+    // Top-right of taper zone
+    ctx.lineTo(SS_W, SS_H + mainH);
+    // Bottom-right (full height — darkest point)
+    ctx.lineTo(SS_W, canvasH);
+    // Bottom-left (shorter — transparent point, diagonal cut)
+    ctx.lineTo(0, canvasH - taperH);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // ── Horizontal strip: x=SS_W..canvasW, y=0..SS_H ─────────────────
+  // Top-bottom gradient: darkest at bottom (y=SS_H), transparent at top (y=0)
+  // Right end: diagonal clip — darkest at bottom-right, transparent at top-right.
+  {
+    const taperW = SS_W; // width of diagonal taper zone at the right end
+    const mainW  = horizW - taperW;
+
+    // Solid gradient body
+    if (mainW > 0) {
+      const grad = ctx.createLinearGradient(0, SS_H, 0, 0);
+      grad.addColorStop(0, C(a));
+      grad.addColorStop(1, C(0));
+      ctx.fillStyle = grad;
+      ctx.fillRect(SS_W, 0, mainW, SS_H);
+    }
+
+    // Diagonal taper at the right end of the horizontal strip:
+    // Diagonal goes from right edge at y=SS_H (bottom, darkest) to y=0 (top, transparent).
+    const grad = ctx.createLinearGradient(0, SS_H, 0, 0);
+    grad.addColorStop(0, C(a));
+    grad.addColorStop(1, C(0));
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    // Bottom-left of taper zone (full strip height — start of diagonal)
+    ctx.moveTo(SS_W + mainW, SS_H);
+    // Bottom-right (pointy darkest corner)
+    ctx.lineTo(canvasW, SS_H);
+    // Top-left (transparent tip — diagonal cuts from bottom-right up to here)
+    ctx.lineTo(SS_W + mainW, 0);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // ── Corner square: only when not covered by a same-layer tile ──────
+  if (showCorner && vertH > 0 && horizW > 0) {
+    const grad = ctx.createRadialGradient(SS_W, SS_H, 0, SS_W, SS_H, Math.max(SS_W, SS_H));
+    grad.addColorStop(0, C(a));
+    grad.addColorStop(1, C(0));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, SS_W, SS_H);
+  }
+
+  board.appendChild(cv);
+}
+
+
+// Draw a single shadow strip (vertical or horizontal) with diagonal taper at end.
+// dir='left': vertical strip, dark right→transparent left, diagonal taper at bottom.
+// dir='top':  horizontal strip, dark bottom→transparent top, diagonal taper at right.
+// Each tile on z>0 carries its own L-shaped shadow canvas, attached directly
+// to its tile element. When the tile is hidden (removed), the shadow goes with it.
+// No dynamic recalculation needed — each tile always casts its own shadow.
+// The shadow covers the tile's left edge (vertical strip) and top edge
+// (horizontal strip), joined by a radial corner.
+// All drawn on one canvas positioned (-SS_W, -SS_H) relative to the tile.
+function attachTileShadow(t, el) {
+  if (t.z === 0) return;
+
+  // Only draw shadow strips for exposed edges:
+  //   Left edge exposed  = no same-layer tile immediately to the left (c-1, same row)
+  //   Top edge exposed   = no same-layer tile immediately above (r-1, same col)
+  //   Corner shown only  = both edges exposed
+  // This is evaluated at creation time (initial layout). When a neighbouring
+  // tile is later removed, it takes its own shadow with it, naturally revealing
+  // the shadow of the tile whose edge is now exposed.
+  const hasLeft = tiles.some(o =>
+    !o.removed && o.z === t.z && o.r === t.r && Math.abs(o.c - (t.c - 1)) < 0.01
+  );
+  const hasAbove = tiles.some(o =>
+    !o.removed && o.z === t.z && o.c === t.c && Math.abs(o.r - (t.r - 1)) < 0.01
+  );
+
+  const doVert  = !hasLeft;   // left edge exposed → draw vertical shadow strip
+  const doHoriz = !hasAbove;  // top edge exposed  → draw horizontal shadow strip
+  const doCorner = doVert && doHoriz;
+
+  if (!doVert && !doHoriz) return;
+
+  const colour = SHADOW_COLOUR[t.z];
+  const m = colour.match(/rgba\((\d+),(\d+),(\d+),([\d.]+)\)/);
+  const r=+m[1],g=+m[2],b=+m[3],a=+m[4];
+  const C = al => 'rgba('+r+','+g+','+b+','+al+')';
+
+  const cw = SS_W + TW, ch = SS_H + TH;
+  const cv = document.createElement('canvas');
+  cv.className = 'shadow-overlay';
+  cv.width = cw; cv.height = ch;
+  cv.style.cssText = 'position:absolute;left:-'+SS_W+'px;top:-'+SS_H+'px;'+
+                     'width:'+cw+'px;height:'+ch+'px;pointer-events:none;z-index:1;';
+  const ctx = cv.getContext('2d');
+
+  // Vertical strip: x=0..SS_W, y=SS_H..ch
+  if (doVert) {
+    const taperH = SS_H, mainH = TH - taperH;
+    if (mainH > 0) {
+      const gr = ctx.createLinearGradient(SS_W,0,0,0);
+      gr.addColorStop(0,C(a)); gr.addColorStop(1,C(0));
+      ctx.fillStyle=gr; ctx.fillRect(0,SS_H,SS_W,mainH);
+    }
+    const gr = ctx.createLinearGradient(SS_W,0,0,0);
+    gr.addColorStop(0,C(a)); gr.addColorStop(1,C(0));
+    ctx.fillStyle=gr;
+    ctx.beginPath();
+    ctx.moveTo(0,   SS_H+mainH); ctx.lineTo(SS_W,SS_H+mainH);
+    ctx.lineTo(SS_W,ch);         ctx.lineTo(0,   ch-taperH);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // Horizontal strip: x=SS_W..cw, y=0..SS_H
+  if (doHoriz) {
+    const taperW = SS_W, mainW = TW - taperW;
+    if (mainW > 0) {
+      const gr = ctx.createLinearGradient(0,SS_H,0,0);
+      gr.addColorStop(0,C(a)); gr.addColorStop(1,C(0));
+      ctx.fillStyle=gr; ctx.fillRect(SS_W,0,mainW,SS_H);
+    }
+    const gr = ctx.createLinearGradient(0,SS_H,0,0);
+    gr.addColorStop(0,C(a)); gr.addColorStop(1,C(0));
+    ctx.fillStyle=gr;
+    ctx.beginPath();
+    ctx.moveTo(SS_W+mainW,SS_H); ctx.lineTo(cw,SS_H);
+    ctx.lineTo(SS_W+mainW,0);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // Corner: only when both strips drawn
+  if (doCorner) {
+    const gr = ctx.createRadialGradient(SS_W,SS_H,0,SS_W,SS_H,Math.max(SS_W,SS_H));
+    gr.addColorStop(0,C(a)); gr.addColorStop(1,C(0));
+    ctx.fillStyle=gr; ctx.fillRect(0,0,SS_W,SS_H);
+  }
+
+  el.appendChild(cv);
+}
+
+
+// Draw tile thickness as canvas parallelograms matching a 3D cube look.
+//
+// RIGHT side — parallelogram:
+//   Top edge: diagonal (face top-right → back top-right, going right+down by TD)
+//   Bottom edge: horizontal (flat, at face bottom level)
+//   TL: (TW,    topY)       face top-right corner
+//   TR: (TW+TD, topY+TD)    diagonal — back top-right
+//   BR: (TW+TD, botY)       flat bottom-right
+//   BL: (TW,    botY)       face bottom-right corner
+//
+// BOTTOM side — parallelogram:
+//   Left edge: diagonal (face bottom-left → back bottom-left, going right+down by TD)
+//   Right edge: vertical (flat, straight down)
+//   TL: (0,    TH)          face bottom-left corner (diagonal start)
+//   TR: (TW,   TH)          face bottom-right corner
+//   BR: (TW,   TH+TD)       flat right — straight down
+//   BL: (TD,   TH+TD)       back bottom-left (shifted right by TD)
+function drawThickness(el, showRight, rightTopHalf, rightBottomHalf) {
+  const TD  = DEPTH;
+  const cv  = document.createElement('canvas');
+  cv.className = 't-thickness';
+  cv.width  = TW + TD;
+  cv.height = TH + TD;
+  cv.style.cssText = 'position:absolute;top:0;left:0;width:'+(TW+TD)+'px;height:'+(TH+TD)+'px;pointer-events:none;z-index:2;';
+  const ctx = cv.getContext('2d');
+
+  const style = getComputedStyle(document.documentElement);
+  const colR  = style.getPropertyValue('--tile-side-r').trim();
+  const colB  = style.getPropertyValue('--tile-side-b').trim();
+
+  // ── RIGHT strip — parallelogram ──────────────────────────────────
+  // TL: (TW, topY)       face top-right corner
+  // TR: (TW+TD, topY+TD) diagonal top edge
+  // BR: (TW+TD, TH+TD)   shared back corner — meeting point with bottom strip
+  // BL: (TW, TH)         face bottom-right corner
+  // A thin dark separation line runs along the diagonal top edge (TL→TR)
+  // to mark the boundary between this layer and the one below.
+  if (showRight) {
+    let topY = 0;
+    let botY = TH;        // face bottom (BL)
+    let brY  = TH + TD;   // shared back corner (BR)
+    if (rightTopHalf)    { botY = TH / 2; brY = TH / 2; }
+    if (rightBottomHalf) { topY = TH / 2; }
+
+    ctx.fillStyle = colR;
+    ctx.beginPath();
+    ctx.moveTo(TW,      topY);        // TL
+    ctx.lineTo(TW + TD, topY + TD);   // TR — diagonal top
+    ctx.lineTo(TW + TD, brY);         // BR — shared back corner
+    ctx.lineTo(TW,      botY);        // BL — face bottom-right
+    ctx.closePath();
+    ctx.fill();
+
+    // Layer separation line — vertical stroke along the LEFT edge of the
+    // right parallelogram (at x=TW), running from topY to botY.
+    // This appears as a vertical line on the face of the thickness strip,
+    // clearly marking the seam between this layer and the one below it.
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(TW, topY);   // top of strip, face side
+    ctx.lineTo(TW, botY);   // bottom of strip, face side
+    ctx.stroke();
+  }
+
+  // ── BOTTOM strip — parallelogram ─────────────────────────────────
+  // TL: (0,     TH)      face bottom-left corner (diagonal start)
+  // TR: (TW,    TH)      face bottom-right corner
+  // BR: (TW+TD, TH+TD)   shared back corner — same point as right strip BR
+  // BL: (TD,    TH+TD)   back bottom-left
+  ctx.fillStyle = colB;
+  ctx.beginPath();
+  ctx.moveTo(0,       TH);        // TL — face bottom-left
+  ctx.lineTo(TW,      TH);        // TR — face bottom-right
+  ctx.lineTo(TW + TD, TH + TD);   // BR — shared back corner
+  ctx.lineTo(TD,      TH + TD);   // BL — back bottom-left
+  ctx.closePath();
+  ctx.fill();
+
+  // Layer separation line — horizontal stroke along the TOP edge of the
+  // bottom strip (y=TH), from face bottom-left to face bottom-right.
+  // Marks the seam between each layer's bottom thickness on the cliff face.
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0,  TH);   // face bottom-left
+  ctx.lineTo(TW, TH);   // face bottom-right
+  ctx.stroke();
+
+  el.appendChild(cv);
+}
+
+// Remove existing shadow canvas from tile element and redraw based on current state.
+// Redraw the thickness canvas for a tile based on current state.
+// Used when head tiles are removed, restoring full right-edge thickness
+// to the body tiles at (c=11, r=3) and (c=11, r=4).
+function refreshThickness(t) {
+  if (!t.el || t.removed) return;
+  // Remove existing thickness canvas
+  const existing = t.el.querySelector('.t-thickness');
+  if (existing) existing.remove();
+  // Redraw — check if head tiles still present to decide clipping
+  const isTail       = t.c === -1;
+  const innerHeadPresent = tiles.some(o => !o.removed && o.c === 12 && Math.abs(o.r - 3.5) < 0.01 && o.z === 0);
+  const isTopHalf    = innerHeadPresent && t.z === 0 && t.c === 11 && t.r === 3;
+  const isBottomHalf = innerHeadPresent && t.z === 0 && t.c === 11 && t.r === 4;
+  drawThickness(t.el, !isTail, isTopHalf, isBottomHalf);
+}
+
+function refreshTileShadow(t) {
+  if (!t.el || t.removed || t.z === 0) return;
+  // Remove existing shadow canvas if present
+  const existing = t.el.querySelector('.shadow-overlay');
+  if (existing) existing.remove();
+  // Redraw fresh shadow based on current neighbour state
+  attachTileShadow(t, t.el);
+}
+
+// ── Master tile face dispatcher ──────────────────────────────────────
+function buildTileFace(t) {
+  if (t.suit==='cat')     return buildNumberSVG(1);
+  if (t.suit==='dot')     return buildNumberSVG(parseInt(t.glyph));
+  if (t.suit==='bamboo')  return buildBambooSVG(parseInt(t.glyph));
+  if (t.suit==='wind')    return buildWindSVG(t.glyph);
+  if (t.suit==='num')     return buildChineseSVG(parseInt(t.glyph));
+  if (t.suit==='dragon')  return buildDragonSVG(t.glyph);
+  if (t.suit==='flower')  return buildFlowerSVG(t.glyph);
+  if (t.suit==='flower2') return buildFlower2SVG(t.glyph);
+  if (t.suit==='season')  return buildSeasonSVG(t.glyph);
+  return '<span class="t-glyph">'+t.glyph+'</span>';
+}
+
+// ── Chinese number tiles (一二三四五六七八九萬) ───────────────────────
+const CH_CHARS = ['一','二','三','四','五','六','七','八','九'];
+function buildChineseSVG(n) {
+  const W=46, H=58;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+    <!-- Corner digit — larger, bold purple -->
+    <text x="3" y="13" font-family="'Cinzel',serif" font-size="15" font-weight="900"
+      fill="#6b2fa0">${n}</text>
+    <!-- Main Chinese character — larger and bolder -->
+    <text x="${W/2}" y="${H*0.50}" text-anchor="middle" dominant-baseline="middle"
+      font-family="'Noto Serif SC',serif" font-size="34" font-weight="900"
+      fill="#c0392b">${CH_CHARS[n-1]}</text>
+    <!-- Small green 萬 symbol at bottom -->
+    <text x="${W/2}" y="${H*0.88}" text-anchor="middle" dominant-baseline="middle"
+      font-family="'Noto Serif SC',serif" font-size="11" font-weight="700"
+      fill="#1a7a2a">萬</text>
+  </svg>`;
+}
+
+
+// ── Bamboo tiles ──────────────────────────────────────────────────────
+function buildBambooSVG(n) {
+  const W=46, H=58, BG='#2d7a3a', cx=W/2, cy=H/2;
+
+  // Draw one bamboo stick: clean rectangle with a centre dot
+  // red=true makes stick red instead of light green
+  function stick(x, y, sw, sh, rotDeg, red) {
+    rotDeg = rotDeg||0; red = red||false;
+    const fill = red ? '#c0392b' : '#8fca6e';
+    const dc   = red ? '#6b0f0f' : '#3a7a1a';  // dot colour
+    const x1=(x-sw/2).toFixed(1), yt=(y-sh/2).toFixed(1);
+    const rot = rotDeg ? ` transform="rotate(${rotDeg},${x.toFixed(1)},${y.toFixed(1)})"` : '';
+    return `<g${rot}>
+      <rect x="${x1}" y="${yt}" width="${sw}" height="${sh}" rx="2.5" fill="${fill}"/>
+      <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(sw*0.28).toFixed(1)}" fill="${dc}"/>
+    </g>`;
+  }
+
+  if (n===1) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      <rect width="${W}" height="${H}" rx="3" fill="${BG}"/>
+      <rect x="${cx-3}" y="32" width="6" height="22" rx="2.5" fill="#5aad5a"/>
+      <line x1="${cx-4}" y1="42" x2="${cx+4}" y2="42" stroke="${BG}" stroke-width="1.2"/>
+      <rect x="${cx-2.5}" y="32" width="5" height="3" rx="1.5" fill="#1a5c1a"/>
+      <ellipse cx="${cx}" cy="22" rx="10" ry="7" fill="#7ec8f0"/>
+      <ellipse cx="${cx-2}" cy="24" rx="6" ry="4" transform="rotate(-15,${cx-2},24)" fill="#5ab4e8"/>
+      <circle cx="${cx+8}" cy="15" r="6" fill="#7ec8f0"/>
+      <path d="M${cx+6},10 Q${cx+9},5 ${cx+12},9" stroke="#e8c520" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      <polygon points="${cx+14},15 ${cx+18},14 ${cx+14},16" fill="#e8c520"/>
+      <circle cx="${cx+9}" cy="14" r="2" fill="white"/>
+      <circle cx="${cx+9.5}" cy="14" r="1" fill="#1a1a1a"/>
+      <path d="M${cx-8},24 Q${cx-16},30 ${cx-12},36" stroke="#e8c520" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <path d="M${cx-8},26 Q${cx-17},33 ${cx-14},40" stroke="#c0392b" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      <path d="M${cx-7},25 Q${cx-14},28 ${cx-10},33" stroke="#7ec8f0" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <line x1="${cx-1}" y1="29" x2="${cx-3}" y2="33" stroke="#e8c520" stroke-width="1.2" stroke-linecap="round"/>
+      <line x1="${cx+1}" y1="29" x2="${cx+3}" y2="33" stroke="#e8c520" stroke-width="1.2" stroke-linecap="round"/>
+    </svg>`;
+  }
+
+  const sw=8, sh=20;   // standard stick size
+  const ss=7, ssh=14;  // short stick size (for 7)
+  let s='';
+
+  // Wider spacing: cols 13px apart, rows 22px apart
+  const dx=13, dy=22;
+
+  if (n===2) {
+    s += stick(cx, cy-dy*0.5, sw, sh);
+    s += stick(cx, cy+dy*0.5, sw, sh);
+  }
+  else if (n===3) {
+    s += stick(cx,    cy-dy*0.6, sw, sh);
+    s += stick(cx-dx, cy+dy*0.5, sw, sh);
+    s += stick(cx+dx, cy+dy*0.5, sw, sh);
+  }
+  else if (n===4) {
+    [-dx,dx].forEach(x => [-dy*0.5,dy*0.5].forEach(y =>
+      s += stick(cx+x, cy+y, sw, sh)));
+  }
+  else if (n===5) {
+    [-dx,dx].forEach(x => [-dy*0.5,dy*0.5].forEach(y =>
+      s += stick(cx+x, cy+y, sw, sh)));
+    s += stick(cx, cy, sw, sh, 0, true);
+  }
+  else if (n===6) {
+    // 3 cols × 2 rows: left+right green, centre red
+    [-dx,0,dx].forEach((x,ci) => [-dy*0.5, dy*0.5].forEach(y =>
+      s += stick(cx+x, cy+y, sw, sh, 0, ci===1)));
+  }
+  else if (n===7) {
+    const dy7 = dy * 0.82;  // more spacing between rows
+    [-dx,0,dx].forEach(x => [cy-dy7*0.1, cy+dy7*0.9].forEach(y =>
+      s += stick(cx+x, y, ss, ssh)));
+    s += stick(cx, cy-dy7*1.1, ss, ssh, 0, true);
+  }
+  else if (n===8) {
+    const PAD  = 4;
+    const lx   = cx - 13, rx = cx + 13;
+    const topT = PAD, botT = H - PAD;
+    const vH   = (H / 2 - topT) * 0.82;
+    const dLen = Math.hypot(cx - lx, vH);
+
+    // Angles measured from vertical (north), for a stick rotating around its centre.
+    // Top half /\: left diagonal leans right (+), right diagonal leans left (-)
+    const angTL = +32.4, angTR = -32.4;
+    // Bottom half \/: left diagonal leans left-down, right leans right-down
+    const angBL = +147.6, angBR = -147.6;
+
+    // ── Top half |/\| ──────────────────────────────────────────────
+    const vTop_cy  = topT + vH / 2;
+    const diagMidY_t = (topT + topT + vH) / 2;   // midpoint y of diagonal
+    s += stick(lx, vTop_cy,   sw, vH);            // left vertical
+    s += stick(rx, vTop_cy,   sw, vH);            // right vertical
+    s += stick((lx+cx)/2, diagMidY_t, sw, dLen, angTL);  // left diagonal
+    s += stick((rx+cx)/2, diagMidY_t, sw, dLen, angTR);  // right diagonal
+
+    // ── Bottom half |\/| ───────────────────────────────────────────
+    const vBot_cy  = botT - vH / 2;
+    const diagMidY_b = (botT + botT - vH) / 2;   // midpoint y of diagonal
+    s += stick(lx, vBot_cy,   sw, vH);            // left vertical
+    s += stick(rx, vBot_cy,   sw, vH);            // right vertical
+    s += stick((lx+cx)/2, diagMidY_b, sw, dLen, angBL);  // left diagonal
+    s += stick((rx+cx)/2, diagMidY_b, sw, dLen, angBR);  // right diagonal
+  }
+  else if (n===9) {
+    // Like 7 but 3 rows: top row red, middle+bottom rows green, more spacing
+    const dy9 = dy * 0.82;
+    [-dx,0,dx].forEach(x => s += stick(cx+x, cy-dy9*1.1, ss, ssh, 0, true));
+    [-dx,0,dx].forEach(x => s += stick(cx+x, cy-dy9*0.1, ss, ssh));
+    [-dx,0,dx].forEach(x => s += stick(cx+x, cy+dy9*0.9, ss, ssh));
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+    <rect width="${W}" height="${H}" rx="3" fill="${BG}"/>
+    ${s}
+  </svg>`;
+}
+
+// ── Dragon tiles ─────────────────────────────────────────────────────
+const DRAGON_DATA = {
+  zhong: { char:'中', c:'#cc1a1a', cloud:'#e87070' },
+  fa:    { char:'發', c:'#1a7a2a', cloud:'#5acd6a' },
+  bai:   { char:'白', c:'#1a3a9a', cloud:'#6ab0f0' },
+};
+
+function buildDragonSVG(type) {
+  const W=46, H=58;
+  const {char, c, cloud} = DRAGON_DATA[type];
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+    <!-- Uniform solid background -->
+    <rect x="0" y="0" width="${W}" height="${H}" fill="#faf6f0"/>
+    <!-- Light coloured tint inside frame -->
+    <rect x="4.5" y="4.5" width="${W-9}" height="${H-9}" rx="2"
+      fill="${cloud}" opacity="0.22"/>
+    <!-- Bold Chinese character centred -->
+    <text x="${W/2}" y="${H/2+10}" text-anchor="middle"
+      font-family="'Noto Serif SC',serif"
+      font-size="36" font-weight="900"
+      fill="${c}">${char}</text>
+    <!-- Thin single dragon-coloured border -->
+    <rect x="1.5" y="1.5" width="${W-3}" height="${H-3}" rx="3"
+      fill="none" stroke="${c}" stroke-width="1.5" opacity="0.9"/>
+  </svg>`;
+}
+
+
+
+// ── Season tiles (春夏秋冬) — illustrated, cream bg, all match ────────
+function buildSeasonSVG(char) {
+  const W=46, H=58, cx=W/2, cy=H/2;
+
+  // ── Spring (春) — cherry blossom branch ──────────────────────────
+  if (char==='春') {
+    let blossoms='';
+    const spots=[[cx-4,cy-8],[cx+8,cy-14],[cx+2,cy-2],[cx-10,cy-2],[cx+12,cy-4]];
+    spots.forEach(([bx,by])=>{
+      // 5 small pink petals
+      for(let i=0;i<5;i++){
+        const a=(i*72)*Math.PI/180;
+        const px=(bx+Math.cos(a)*4.5).toFixed(1);
+        const py=(by+Math.sin(a)*4.5).toFixed(1);
+        blossoms+=`<circle cx="${px}" cy="${py}" r="3.2" fill="#f8a0b8" opacity="0.9"/>`;
+      }
+      blossoms+=`<circle cx="${bx}" cy="${by}" r="1.8" fill="#f06292"/>`;
+    });
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      <!-- Branch -->
+      <path d="M${cx-2},${H-4} Q${cx},${cy+10} ${cx+10},${cy-10}" stroke="#8b5e3c" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <path d="M${cx+4},${cy+2} Q${cx-6},${cy-6} ${cx-12},${cy-4}" stroke="#8b5e3c" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      ${blossoms}
+      <text x="${cx}" y="${H-6}" text-anchor="middle" font-family="'Noto Serif SC',serif"
+        font-size="8" fill="#c0392b" opacity="0.6">春</text>
+    </svg>`;
+  }
+
+  // ── Summer (夏) — bright sun ──────────────────────────────────────
+  if (char==='夏') {
+    let rays='';
+    for(let i=0;i<12;i++){
+      const a=(i*30)*Math.PI/180;
+      const x1=(cx+Math.cos(a)*11).toFixed(1), y1=(cy+Math.sin(a)*11).toFixed(1);
+      const x2=(cx+Math.cos(a)*18).toFixed(1), y2=(cy+Math.sin(a)*18).toFixed(1);
+      rays+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+        stroke="#f39c12" stroke-width="${i%2===0?2:1.2}" stroke-linecap="round"/>`;
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      ${rays}
+      <circle cx="${cx}" cy="${cy}" r="10" fill="#f1c40f"/>
+      <circle cx="${cx}" cy="${cy}" r="7"  fill="#f39c12"/>
+      <!-- Face -->
+      <circle cx="${cx-3}" cy="${cy-1}" r="1.2" fill="#8b6000"/>
+      <circle cx="${cx+3}" cy="${cy-1}" r="1.2" fill="#8b6000"/>
+      <path d="M${cx-3},${cy+3} Q${cx},${cy+6} ${cx+3},${cy+3}" stroke="#8b6000" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+      <text x="${cx}" y="${H-6}" text-anchor="middle" font-family="'Noto Serif SC',serif"
+        font-size="8" fill="#c0392b" opacity="0.6">夏</text>
+    </svg>`;
+  }
+
+  // ── Autumn (秋) — maple leaf ──────────────────────────────────────
+  if (char==='秋') {
+    const lc='#e74c3c', lc2='#e67e22';
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      <!-- Maple leaf shape -->
+      <path d="M${cx},${cy-18}
+        L${cx+5},${cy-10} L${cx+14},${cy-13} L${cx+10},${cy-4}
+        L${cx+18},${cy-2} L${cx+12},${cy+5} L${cx+14},${cy+13}
+        L${cx+5},${cy+10} L${cx+2},${cy+18}
+        L${cx},${cy+8}
+        L${cx-2},${cy+18} L${cx-5},${cy+10} L${cx-14},${cy+13}
+        L${cx-12},${cy+5} L${cx-18},${cy-2} L${cx-10},${cy-4}
+        L${cx-14},${cy-13} L${cx-5},${cy-10} Z"
+        fill="${lc}" opacity="0.9"/>
+      <!-- Stem -->
+      <line x1="${cx}" y1="${cy+12}" x2="${cx}" y2="${H-6}"
+        stroke="#8b5e3c" stroke-width="2" stroke-linecap="round"/>
+      <!-- Veins -->
+      <line x1="${cx}" y1="${cy-14}" x2="${cx}" y2="${cy+10}" stroke="${lc2}" stroke-width="0.8" opacity="0.6"/>
+      <line x1="${cx}" y1="${cy}" x2="${cx+12}" y2="${cy-4}" stroke="${lc2}" stroke-width="0.8" opacity="0.6"/>
+      <line x1="${cx}" y1="${cy}" x2="${cx-12}" y2="${cy-4}" stroke="${lc2}" stroke-width="0.8" opacity="0.6"/>
+      <text x="${cx}" y="${H-6}" text-anchor="middle" font-family="'Noto Serif SC',serif"
+        font-size="8" fill="#c0392b" opacity="0.6">秋</text>
+    </svg>`;
+  }
+
+  // ── Winter (冬) — snowflake ───────────────────────────────────────
+  if (char==='冬') {
+    const sc='#5dade2';
+    let flake='';
+    // 6 main arms
+    for(let i=0;i<6;i++){
+      const a=(i*60)*Math.PI/180;
+      const x2=(cx+Math.cos(a)*16).toFixed(1), y2=(cy+Math.sin(a)*16).toFixed(1);
+      flake+=`<line x1="${cx}" y1="${cy}" x2="${x2}" y2="${y2}"
+        stroke="${sc}" stroke-width="2" stroke-linecap="round"/>`;
+      // Side branches at 1/3 and 2/3 along each arm
+      [0.42,0.72].forEach(t=>{
+        const bx=cx+Math.cos(a)*16*t, by=cy+Math.sin(a)*16*t;
+        const ba1=a+Math.PI/3, ba2=a-Math.PI/3;
+        const bl=4.5;
+        flake+=`<line x1="${bx.toFixed(1)}" y1="${by.toFixed(1)}"
+          x2="${(bx+Math.cos(ba1)*bl).toFixed(1)}" y2="${(by+Math.sin(ba1)*bl).toFixed(1)}"
+          stroke="${sc}" stroke-width="1.2" stroke-linecap="round"/>`;
+        flake+=`<line x1="${bx.toFixed(1)}" y1="${by.toFixed(1)}"
+          x2="${(bx+Math.cos(ba2)*bl).toFixed(1)}" y2="${(by+Math.sin(ba2)*bl).toFixed(1)}"
+          stroke="${sc}" stroke-width="1.2" stroke-linecap="round"/>`;
+      });
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      ${flake}
+      <circle cx="${cx}" cy="${cy}" r="3" fill="${sc}"/>
+      <circle cx="${cx}" cy="${cy}" r="1.5" fill="white"/>
+      <text x="${cx}" y="${H-6}" text-anchor="middle" font-family="'Noto Serif SC',serif"
+        font-size="8" fill="#1a4f8a" opacity="0.6">冬</text>
+    </svg>`;
+  }
+  return '';
+}
+
+// ── Flower2 tiles (梅蘭菊竹→Lotus) — illustrated, green bg, all match ─
+function buildFlower2SVG(char) {
+  const W=46, H=58, BG='#2d7a3a', cx=W/2, cy=H/2;
+
+  // ── Plum Blossom (梅) — 5 pink/red petals ───────────────────────
+  if (char==='梅') {
+    const pc='#e8354a', pr=7.5, or2=9;
+    let petals='';
+    for(let i=0;i<5;i++){
+      const a=(i*72-90)*Math.PI/180;
+      const px=(cx+Math.cos(a)*or2).toFixed(1);
+      const py=(cy+Math.sin(a)*or2).toFixed(1);
+      petals+=`<circle cx="${px}" cy="${py}" r="${pr}" fill="${pc}" opacity="0.92"/>`;
+    }
+    // Branch
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      <rect width="${W}" height="${H}" rx="3" fill="${BG}"/>
+      <line x1="${cx}" y1="${H}" x2="${cx}" y2="${cy+8}" stroke="#8b5e3c" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="${cx}" y1="${cy+5}" x2="${cx-9}" y2="${cy-5}" stroke="#8b5e3c" stroke-width="1.5" stroke-linecap="round"/>
+      ${petals}
+      <circle cx="${cx}" cy="${cy}" r="3.5" fill="#fff9e6"/>
+      <circle cx="${cx}" cy="${cy}" r="1.8" fill="#c0392b"/>
+    </svg>`;
+  }
+
+  // ── Orchid (蘭) — purple elegant petals ──────────────────────────
+  if (char==='蘭') {
+    const pc='#8e44c8';
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      <rect width="${W}" height="${H}" rx="3" fill="${BG}"/>
+      <!-- Stem and leaves -->
+      <line x1="${cx}" y1="${H-4}" x2="${cx}" y2="${cy+8}" stroke="#5aad5a" stroke-width="2" stroke-linecap="round"/>
+      <ellipse cx="${cx-10}" cy="${cy+18}" rx="9" ry="3"
+        transform="rotate(-30,${cx-10},${cy+18})" fill="#5aad5a" opacity="0.8"/>
+      <ellipse cx="${cx+10}" cy="${cy+18}" rx="9" ry="3"
+        transform="rotate(30,${cx+10},${cy+18})" fill="#5aad5a" opacity="0.8"/>
+      <!-- Top petal -->
+      <ellipse cx="${cx}" cy="${cy-13}" rx="5.5" ry="9" fill="${pc}" opacity="0.9"/>
+      <!-- Upper-left petal -->
+      <ellipse cx="${cx-10}" cy="${cy-7}" rx="5" ry="8.5"
+        transform="rotate(-35,${cx-10},${cy-7})" fill="${pc}" opacity="0.9"/>
+      <!-- Upper-right petal -->
+      <ellipse cx="${cx+10}" cy="${cy-7}" rx="5" ry="8.5"
+        transform="rotate(35,${cx+10},${cy-7})" fill="${pc}" opacity="0.9"/>
+      <!-- Lower sepals -->
+      <ellipse cx="${cx-11}" cy="${cy+8}" rx="4" ry="7"
+        transform="rotate(-55,${cx-11},${cy+8})" fill="${pc}" opacity="0.7"/>
+      <ellipse cx="${cx+11}" cy="${cy+8}" rx="4" ry="7"
+        transform="rotate(55,${cx+11},${cy+8})" fill="${pc}" opacity="0.7"/>
+      <!-- Lip -->
+      <ellipse cx="${cx}" cy="${cy+5}" rx="5" ry="6.5" fill="#d4aaff" opacity="0.9"/>
+      <circle cx="${cx}" cy="${cy+3}" r="2.2" fill="#6b2fa0"/>
+    </svg>`;
+  }
+
+  // ── Chrysanthemum (菊) — yellow multi-petal ───────────────────────
+  if (char==='菊') {
+    const pc='#e8c520';
+    let petals='';
+    for(let i=0;i<14;i++){
+      const a=(i*360/14)*Math.PI/180;
+      const mx=(cx+Math.cos(a)*11).toFixed(1);
+      const my=(cy+Math.sin(a)*11).toFixed(1);
+      const rot=(i*360/14).toFixed(0);
+      petals+=`<ellipse cx="${mx}" cy="${my}" rx="2.8" ry="7"
+        transform="rotate(${rot},${mx},${my})" fill="${pc}" opacity="0.9"/>`;
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      <rect width="${W}" height="${H}" rx="3" fill="${BG}"/>
+      <line x1="${cx}" y1="${H-4}" x2="${cx}" y2="${cy+16}" stroke="#5aad5a" stroke-width="2" stroke-linecap="round"/>
+      <ellipse cx="${cx-9}" cy="${cy+22}" rx="8" ry="2.5"
+        transform="rotate(-25,${cx-9},${cy+22})" fill="#5aad5a" opacity="0.8"/>
+      ${petals}
+      <circle cx="${cx}" cy="${cy}" r="5" fill="#fff176"/>
+      <circle cx="${cx}" cy="${cy}" r="2.8" fill="#c8a000"/>
+    </svg>`;
+  }
+
+  // ── Lotus (竹→lotus) — pink/white petals ─────────────────────────
+  if (char==='竹') {
+    const pc='#f48fb1', pc2='#ffffff';
+    let petals='';
+    // Outer ring: 8 pink petals
+    for(let i=0;i<8;i++){
+      const a=(i*45-90)*Math.PI/180;
+      const mx=(cx+Math.cos(a)*10).toFixed(1);
+      const my=(cy+Math.sin(a)*10).toFixed(1);
+      const rot=(i*45).toFixed(0);
+      petals+=`<ellipse cx="${mx}" cy="${my}" rx="4" ry="9"
+        transform="rotate(${rot},${mx},${my})" fill="${pc}" opacity="0.88"/>`;
+    }
+    // Inner ring: 5 white/pink petals
+    for(let i=0;i<5;i++){
+      const a=(i*72-90)*Math.PI/180;
+      const mx=(cx+Math.cos(a)*5).toFixed(1);
+      const my=(cy+Math.sin(a)*5).toFixed(1);
+      const rot=(i*72).toFixed(0);
+      petals+=`<ellipse cx="${mx}" cy="${my}" rx="2.5" ry="5.5"
+        transform="rotate(${rot},${mx},${my})" fill="${pc2}" opacity="0.9"/>`;
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      <rect width="${W}" height="${H}" rx="3" fill="${BG}"/>
+      <!-- Water line -->
+      <path d="M4,${H-10} Q${W/2},${H-16} ${W-4},${H-10}" stroke="#5aad5a" stroke-width="1.5" fill="none"/>
+      <!-- Stem -->
+      <line x1="${cx}" y1="${H-10}" x2="${cx}" y2="${cy+12}" stroke="#5aad5a" stroke-width="2.5" stroke-linecap="round"/>
+      <!-- Leaves -->
+      <ellipse cx="${cx-11}" cy="${cy+20}" rx="10" ry="4"
+        transform="rotate(-20,${cx-11},${cy+20})" fill="#5aad5a" opacity="0.7"/>
+      <ellipse cx="${cx+11}" cy="${cy+22}" rx="10" ry="4"
+        transform="rotate(20,${cx+11},${cy+22})" fill="#5aad5a" opacity="0.7"/>
+      ${petals}
+      <circle cx="${cx}" cy="${cy}" r="4.5" fill="#ffe0b2"/>
+      <circle cx="${cx}" cy="${cy}" r="2.2" fill="#fb8c00"/>
+    </svg>`;
+  }
+  return '';
+}
+
+// ── Wind tile SVG renderer ───────────────────────────────────────────
+// Standard tile face (cream/ivory), blue Chinese character + capital letter.
+const WIND_DATA = {
+  east:  { char:'東', letter:'E' },
+  south: { char:'南', letter:'S' },
+  west:  { char:'西', letter:'W' },
+  north: { char:'北', letter:'N' },
+};
+
+function buildWindSVG(type) {
+  const W = 46, H = 58;
+  const { char, letter } = WIND_DATA[type];
+  const blue  = '#1a4f8a';  // Chinese character colour
+  const green = '#1a7a2a';  // letter + rose colour
+  const dimG  = 'rgba(26,122,42,0.3)';
+
+  // ── Compass rose — bottom-right corner, bold green ──────────────
+  const rcx = W-9, rcy = H-9, r = 7.5;
+  const dirs = [
+    { angle:-90, key:'north' },
+    { angle:  0, key:'east'  },
+    { angle: 90, key:'south' },
+    { angle:180, key:'west'  },
+  ];
+  let rose = '';
+  // Cross lines
+  dirs.forEach(d => {
+    const rad = d.angle * Math.PI/180;
+    const x2  = (rcx + Math.cos(rad)*r).toFixed(1);
+    const y2  = (rcy + Math.sin(rad)*r).toFixed(1);
+    const col = d.key===type ? green : dimG;
+    rose += `<line x1="${rcx}" y1="${rcy}" x2="${x2}" y2="${y2}"
+      stroke="${col}" stroke-width="${d.key===type ? 2.2 : 1.0}"/>`;
+  });
+  // Diamond arrowheads — bolder
+  dirs.forEach(d => {
+    const rad  = d.angle * Math.PI/180;
+    const perp = (d.angle+90) * Math.PI/180;
+    const tip  = { x: rcx + Math.cos(rad)*r,        y: rcy + Math.sin(rad)*r };
+    const base = { x: rcx + Math.cos(rad)*(r*0.38),  y: rcy + Math.sin(rad)*(r*0.38) };
+    const l    = { x: base.x + Math.cos(perp)*2.8,   y: base.y + Math.sin(perp)*2.8 };
+    const rr   = { x: base.x - Math.cos(perp)*2.8,   y: base.y - Math.sin(perp)*2.8 };
+    const col  = d.key===type ? green : dimG;
+    rose += `<polygon points="${tip.x.toFixed(1)},${tip.y.toFixed(1)} ${l.x.toFixed(1)},${l.y.toFixed(1)} ${rr.x.toFixed(1)},${rr.y.toFixed(1)}"
+      fill="${col}"/>`;
+  });
+  rose += `<circle cx="${rcx}" cy="${rcy}" r="1.8" fill="${green}"/>`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+    <!-- Capital letter — top-left, bold green, large -->
+    <text x="4" y="14" font-family="'Cinzel',serif" font-size="14" font-weight="900"
+      fill="${green}">${letter}</text>
+    <!-- Bold Chinese character — centre, blue -->
+    <text x="${W/2}" y="${H*0.48}" text-anchor="middle" dominant-baseline="middle"
+      font-family="'Noto Serif SC',serif" font-size="30" font-weight="900"
+      fill="${blue}">${char}</text>
+    <!-- Compass rose — bottom-right, bold green -->
+    ${rose}
+  </svg>`;
+}
+
+// ── Flower tile SVG renderer ─────────────────────────────────────────
+// Green background, simple modern line-art flower in contrasting colour.
+function buildFlowerSVG(type) {
+  const W = 46, H = 58;
+  const cx = W/2, cy = H/2;
+  const BG = '#2d7a3a';  // green background
+
+  // ── Plum Blossom — 5 round petals, red/pink ─────────────────────
+  if (type === 'plum') {
+    const pc = '#e8354a'; // petal colour
+    const pr = 7.5;       // petal radius
+    const or = 9;         // orbit radius (centre-to-petal-centre)
+    let petals = '';
+    for (let i=0; i<5; i++) {
+      const a = (i * 72 - 90) * Math.PI/180;
+      const px = (cx + Math.cos(a)*or).toFixed(1);
+      const py = (cy + Math.sin(a)*or).toFixed(1);
+      petals += `<circle cx="${px}" cy="${py}" r="${pr}" fill="${pc}" opacity="0.92"/>`;
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      <rect width="${W}" height="${H}" rx="3" fill="${BG}"/>
+      ${petals}
+      <circle cx="${cx}" cy="${cy}" r="4" fill="#fff9e6"/>
+      <circle cx="${cx}" cy="${cy}" r="2" fill="#c0392b"/>
+    </svg>`;
+  }
+
+  // ── Orchid — elegant 5-petal orchid shape, purple ───────────────
+  if (type === 'orchid') {
+    const pc = '#8e44c8';
+    // 3 upper petals + 2 lower spread petals + central lip
+    const p = (a, rx, ry, rot) => {
+      const rad = rot*Math.PI/180;
+      const ox = (cx + Math.cos(a*Math.PI/180)*12).toFixed(1);
+      const oy = (cy + Math.sin(a*Math.PI/180)*12).toFixed(1);
+      return `<ellipse cx="${ox}" cy="${oy}" rx="${rx}" ry="${ry}"
+        transform="rotate(${rot},${ox},${oy})" fill="${pc}" opacity="0.88"/>`;
+    };
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      <rect width="${W}" height="${H}" rx="3" fill="${BG}"/>
+      <!-- Top petal -->
+      <ellipse cx="${cx}" cy="${cy-13}" rx="5.5" ry="9" fill="${pc}" opacity="0.88"/>
+      <!-- Upper-left petal -->
+      <ellipse cx="${cx-10}" cy="${cy-7}" rx="5" ry="8.5"
+        transform="rotate(-35,${cx-10},${cy-7})" fill="${pc}" opacity="0.88"/>
+      <!-- Upper-right petal -->
+      <ellipse cx="${cx+10}" cy="${cy-7}" rx="5" ry="8.5"
+        transform="rotate(35,${cx+10},${cy-7})" fill="${pc}" opacity="0.88"/>
+      <!-- Lower-left sepal -->
+      <ellipse cx="${cx-11}" cy="${cy+8}" rx="4" ry="7.5"
+        transform="rotate(-55,${cx-11},${cy+8})" fill="${pc}" opacity="0.75"/>
+      <!-- Lower-right sepal -->
+      <ellipse cx="${cx+11}" cy="${cy+8}" rx="4" ry="7.5"
+        transform="rotate(55,${cx+11},${cy+8})" fill="${pc}" opacity="0.75"/>
+      <!-- Lip / centre -->
+      <ellipse cx="${cx}" cy="${cy+5}" rx="5" ry="7" fill="#d4aaff" opacity="0.9"/>
+      <circle cx="${cx}" cy="${cy+3}" r="2.5" fill="#6b2fa0"/>
+    </svg>`;
+  }
+
+  // ── Chrysanthemum — many petals radiating from centre, gold/yellow ─
+  if (type === 'chrys') {
+    const pc = '#e8c520';
+    let petals = '';
+    for (let i=0; i<12; i++) {
+      const a = (i * 30) * Math.PI/180;
+      const x1 = (cx + Math.cos(a)*5).toFixed(1);
+      const y1 = (cy + Math.sin(a)*5).toFixed(1);
+      const x2 = (cx + Math.cos(a)*20).toFixed(1);
+      const y2 = (cy + Math.sin(a)*20).toFixed(1);
+      // Petal as a narrow ellipse
+      const midX = (cx + Math.cos(a)*12.5).toFixed(1);
+      const midY = (cy + Math.sin(a)*12.5).toFixed(1);
+      const rot  = (i*30).toFixed(0);
+      petals += `<ellipse cx="${midX}" cy="${midY}" rx="3.2" ry="8"
+        transform="rotate(${rot},${midX},${midY})" fill="${pc}" opacity="0.9"/>`;
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      <rect width="${W}" height="${H}" rx="3" fill="${BG}"/>
+      ${petals}
+      <circle cx="${cx}" cy="${cy}" r="5.5" fill="#fff176"/>
+      <circle cx="${cx}" cy="${cy}" r="3"   fill="#c8a000"/>
+    </svg>`;
+  }
+
+  // ── Bamboo — 3 stalks with leaves, white/light stalks ───────────
+  if (type === 'bamboo') {
+    const sc = '#d4f0c0'; // stalk colour (light on green)
+    const lc = '#a8e060'; // leaf colour
+    const sw = 5;         // stalk width
+    // 3 stalks at different heights
+    const stalks = [
+      {x: cx-13, h: 38, y0: H-8},
+      {x: cx,    h: 46, y0: H-6},
+      {x: cx+13, h: 34, y0: H-8},
+    ];
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      <rect width="${W}" height="${H}" rx="3" fill="${BG}"/>`;
+
+    stalks.forEach(({x, h, y0}) => {
+      const top = y0 - h;
+      // Stalk segments with joint lines
+      svg += `<rect x="${x-sw/2}" y="${top}" width="${sw}" height="${h}" rx="2.5" fill="${sc}"/>`;
+      // Joint lines at 1/3 and 2/3 of stalk
+      for (let j=1; j<=2; j++) {
+        const jy = (top + h*j/3).toFixed(1);
+        svg += `<line x1="${x-sw/2-1}" y1="${jy}" x2="${x+sw/2+1}" y2="${jy}" stroke="${BG}" stroke-width="1.5"/>`;
+      }
+      // Leaves at top
+      svg += `<ellipse cx="${x-8}" cy="${top+4}" rx="7" ry="2.5"
+        transform="rotate(-30,${x-8},${top+4})" fill="${lc}"/>`;
+      svg += `<ellipse cx="${x+8}" cy="${top+6}" rx="7" ry="2.5"
+        transform="rotate(30,${x+8},${top+6})" fill="${lc}"/>`;
+    });
+
+    svg += `</svg>`;
+    return svg;
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+    <rect width="${W}" height="${H}" rx="3" fill="${BG}"/>
+  </svg>`;
+}
+
+// ── Number tile SVG renderer ─────────────────────────────────────────
+const R = '#c0392b', P = '#6b2fa0', G = '#1d7a3a';
+
+// Dot positions as [gridCol 0-2, gridRow 0-2] and colour per dot
+// Grid cols: 0=left, 1=centre, 2=right
+// Grid rows: 0=top, 1=middle, 2=bottom
+const NUMBER_DOTS = {
+  // 2: top-centre, bottom-centre
+  2: { pos:[[1,0],[1,2]], col:[R,P] },
+  // 3: diagonal top-right → centre → bottom-left
+  3: { pos:[[2,0],[1,1],[0,2]], col:[R,P,G] },
+  // 4: corners
+  4: { pos:[[0,0],[2,0],[0,2],[2,2]], col:[R,P,P,R] },
+  // 5: corners + centre
+  5: { pos:[[0,0],[2,0],[1,1],[0,2],[2,2]], col:[R,P,G,P,R] },
+  // 6: 6 purple dots, 2 cols of 3
+  6: { pos:[[0,0],[2,0],[0,1],[2,1],[0,2],[2,2]], col:[P,P,P,P,P,P] },
+  // 7: left col 3, right col 3, centre 1 (middle row) — like image
+  7: { pos:[[0,0],[2,0],[0,1],[1,1],[2,1],[0,2],[2,2]], col:[P,P,P,G,P,P,P] },
+  // 8: left col 3, centre col 2 (closer together), right col 3
+  8: { pos:[[0,0],[2,0],[0,1],[2,1],[1,0.4],[1,1.6],[0,2],[2,2]], col:[R,R,R,R,G,G,R,R] },
+  // 9: 3×3 grid
+  9: { pos:[[0,0],[1,0],[2,0],[0,1],[1,1],[2,1],[0,2],[1,2],[2,2]], col:[R,P,G,R,P,G,R,P,G] },
+};
+
+function buildNumberSVG(n) {
+  const W = 46, H = 58;
+  const PAD = 4;
+  const inner = { w: W - PAD*2, h: H - PAD*2 };
+
+  if (n === 1) {
+    // Full cat — same geometric piece approach as bird/seasons
+    // Sitting cat facing right, purple tones, flat style
+    const W2=46, H2=58, cx=W2/2, cy=H2/2;
+    const P  = '#6b2fa0';   // main purple
+    const LP = '#c9a0dc';   // light purple
+    const DP = '#4a1570';   // dark purple
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W2} ${H2}" width="${W2}" height="${H2}">
+
+      <!-- TAIL — shorter, curling upward on right side, not touching head -->
+      <path d="M30,44 Q42,42 43,34 Q44,26 38,24 Q34,23 35,28"
+        stroke="${P}" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+      <!-- Tail tip — curled end -->
+      <ellipse cx="35.5" cy="29" rx="3.5" ry="2.5"
+        transform="rotate(30,35.5,29)" fill="${LP}"/>
+
+      <!-- BODY — large rounded ellipse, centre of tile -->
+      <ellipse cx="22" cy="40" rx="14" ry="11" fill="${P}"/>
+      <!-- Body belly — lighter ellipse -->
+      <ellipse cx="22" cy="42" rx="9" ry="7" fill="${LP}"/>
+
+      <!-- BACK LEGS / HAUNCHES — rounded shapes at bottom -->
+      <ellipse cx="14" cy="49" rx="7" ry="4.5" fill="${P}"/>
+      <ellipse cx="30" cy="49" rx="7" ry="4.5" fill="${P}"/>
+      <!-- Paws -->
+      <ellipse cx="12" cy="52" rx="5" ry="2.8" fill="${LP}"/>
+      <ellipse cx="30" cy="52" rx="5" ry="2.8" fill="${LP}"/>
+
+      <!-- FRONT LEGS — two rounded stubs at front bottom -->
+      <ellipse cx="16" cy="50" rx="4" ry="3" fill="${DP}"/>
+      <ellipse cx="24" cy="51" rx="4" ry="3" fill="${DP}"/>
+
+      <!-- NECK -->
+      <ellipse cx="22" cy="28" rx="7" ry="5" fill="${P}"/>
+
+      <!-- HEAD — circle upper centre -->
+      <circle cx="22" cy="20" r="10" fill="${P}"/>
+      <!-- Head highlight — lighter top -->
+      <ellipse cx="20" cy="16" rx="6" ry="4" fill="${LP}" opacity="0.5"/>
+
+      <!-- LEFT EAR — triangle -->
+      <polygon points="14,13 12,5 19,11" fill="${P}"/>
+      <polygon points="15,12 13,7 18,11" fill="${LP}"/>
+      <!-- RIGHT EAR — triangle -->
+      <polygon points="30,13 28,5 25,11" fill="${P}"/>
+      <polygon points="29,12 27,7 26,11" fill="${LP}"/>
+
+      <!-- RIGHT EYE — white circle + dark pupil + highlight -->
+      <circle cx="26" cy="19" r="3.5" fill="white"/>
+      <circle cx="26.5" cy="19" r="2" fill="${DP}"/>
+      <circle cx="25.8" cy="18.2" r="0.9" fill="white"/>
+
+      <!-- LEFT EYE — same style -->
+      <circle cx="18" cy="19" r="3.5" fill="white"/>
+      <circle cx="18.5" cy="19" r="2" fill="${DP}"/>
+      <circle cx="17.8" cy="18.2" r="0.9" fill="white"/>
+
+      <!-- NOSE — small triangle -->
+      <polygon points="23,23 22,25 24,25" fill="${LP}"/>
+
+      <!-- MOUTH — small W -->
+      <path d="M21,25 Q22,27 23,25 Q24,27 25,25"
+        stroke="${LP}" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+
+      <!-- WHISKERS — 3 per side, thin -->
+      <line x1="24" y1="23" x2="30" y2="21" stroke="${LP}" stroke-width="0.9" stroke-linecap="round"/>
+      <line x1="24" y1="24" x2="31" y2="24" stroke="${LP}" stroke-width="0.9" stroke-linecap="round"/>
+      <line x1="24" y1="25" x2="30" y2="27" stroke="${LP}" stroke-width="0.9" stroke-linecap="round"/>
+      <line x1="22" y1="23" x2="16" y2="21" stroke="${LP}" stroke-width="0.9" stroke-linecap="round"/>
+      <line x1="22" y1="24" x2="15" y2="24" stroke="${LP}" stroke-width="0.9" stroke-linecap="round"/>
+      <line x1="22" y1="25" x2="16" y2="27" stroke="${LP}" stroke-width="0.9" stroke-linecap="round"/>
+
+      <!-- STRIPES on body — subtle darker lines -->
+      <path d="M16,34 Q22,32 28,34" stroke="${DP}" stroke-width="1" fill="none" opacity="0.5"/>
+      <path d="M14,38 Q22,36 30,38" stroke="${DP}" stroke-width="1" fill="none" opacity="0.4"/>
+
+    </svg>`;
+  }
+
+
+  // Dots for 2-9
+  const { pos, col } = NUMBER_DOTS[n];
+  const cellW = inner.w / 3;
+  const cellH = inner.h / 3;
+  // Larger dots for fewer-dot tiles, still good size for 6-9
+  const dotScale = n <= 5 ? 0.72 : 0.55;
+  const dotR  = Math.min(cellW, cellH) * dotScale;
+
+  let dots = '';
+  pos.forEach(([gc, gr], i) => {
+    const cx  = PAD + cellW * gc + cellW / 2;
+    const cy  = PAD + cellH * gr + cellH / 2;
+    const r   = dotR;
+    const cxs = cx.toFixed(1), cys = cy.toFixed(1);
+    // Dot circle
+    dots += `<circle cx="${cxs}" cy="${cys}" r="${r.toFixed(1)}" fill="${col[i]}"/>`;
+    // Tiny dark grey centre circle
+    dots += `<circle cx="${cxs}" cy="${cys}" r="${(r*0.22).toFixed(1)}" fill="#1a1a1a" opacity="0.55"/>`;
+  });
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${dots}</svg>`;
+}
+
+function makeTileEl(t) {
+  const el = document.createElement('div');
+  el.className = 'tile suit-' + t.suit;
+  el.dataset.id = t.id;
+  el.innerHTML = '<div class="t-face">' + buildTileFace(t) + '</div>';
+  el.onclick = () => onTileClick(t.id);
+
+  const isTail       = t.c === -1;
+  const isTopHalf    = t.z === 0 && t.c === 11 && t.r === 3;
+  const isBottomHalf = t.z === 0 && t.c === 11 && t.r === 4;
+  drawThickness(el, !isTail, isTopHalf, isBottomHalf);
+  // Shadow canvas attached directly to el (t.el not yet assigned at this point)
+  if (t.z > 0) attachTileShadow(t, el);
+  return el;
+}
+
+function placeTile(t) {
+  if (!t.el) return;
+  const {x, y, zi} = tilePixelPos(t);
+  t.el.style.left    = x + 'px';
+  t.el.style.top     = y + 'px';
+  t.el.style.zIndex  = zi;
+  t.el.style.display = t.removed ? 'none' : '';
+}
+
+function refreshFreeState() {
+  tiles.forEach(t => {
+    if (t.removed || !t.el) return;
+    t.el.classList.toggle('locked', !isFree(t, tiles));
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  INTERACTION
+// ════════════════════════════════════════════════════════════════
+function onTileClick(id) {
+  if (gameOver) return;
+  const tile = tiles[id];
+  if (!tile || tile.removed) return;
+
+  if (!isFree(tile, tiles)) {
+    showToast('This tile is blocked — free its neighbours first.');
+    return;
+  }
+
+  if (selected === null) {
+    selected = id;
+    tile.el.classList.add('selected');
+    playClick();
+    return;
+  }
+  if (selected === id) {
+    tile.el.classList.remove('selected');
+    selected = null;
+    return;
+  }
+
+  const prev = tiles[selected];
+  if (tilesMatch(prev, tile)) {
+    history.push({id1: selected, id2: id});
+    playMatch();
+    removeTile(prev);
+    removeTile(tile);
+    selected = null;
+    matches++;
+    score += 10 + tile.z * 8;
+    updateStats();
+    refreshFreeState();
+    checkWin();
+    if (!gameOver) checkNoMoves();
+  } else {
+    prev.el.classList.remove('selected');
+    selected = id;
+    tile.el.classList.add('selected');
+  }
+}
+
+function tilesMatch(a, b) { return a.matchId === b.matchId; }
+
+function removeTile(t) {
+  t.removed = true;
+  if (t.el) {
+    t.el.classList.add('matched');
+    t.el.classList.remove('selected');
+    setTimeout(() => { if (t.el) t.el.style.display = 'none'; }, 420);
+  }
+  // After removal, refresh shadows of neighbours whose edges are now exposed:
+  // - tile immediately to the RIGHT (same layer, same row): left edge now exposed
+  // - tile immediately BELOW (same layer, same col): top edge now exposed
+  tiles.forEach(o => {
+    if (o.removed || o.z !== t.z) return;
+    const isRight = Math.abs(o.c - (t.c + 1)) < 0.01 && Math.abs(o.r - t.r) < 0.01;
+    const isBelow = Math.abs(o.r - (t.r + 1)) < 0.01 && Math.abs(o.c - t.c) < 0.01;
+    if (isRight || isBelow) refreshTileShadow(o);
+  });
+  // When inner head tile (c=12) is removed, body tiles at (c=11, r=3) and (c=11, r=4)
+  // get their full right-edge thickness restored.
+  if (t.z === 0 && Math.abs(t.c - 12) < 0.01) {
+    [3, 4].forEach(r => {
+      const body = tiles.find(o => !o.removed && o.z === 0 && o.c === 11 && o.r === r);
+      if (body) refreshThickness(body);
+    });
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  UNDO / HINT / SHUFFLE
+// ════════════════════════════════════════════════════════════════
+function undoMove() {
+  if (!history.length) { showToast('Nothing to undo.'); return; }
+  const {id1, id2} = history.pop();
+  [id1, id2].forEach(id => {
+    const t = tiles[id];
+    t.removed = false;
+    if (t.el) { t.el.style.display = ''; t.el.classList.remove('matched','selected'); }
+    // Restore this tile's own shadow, then refresh neighbours whose edges are now blocked again
+    refreshTileShadow(t);
+    tiles.forEach(o => {
+      if (o.removed || o.z !== t.z) return;
+      const isRight = Math.abs(o.c - (t.c + 1)) < 0.01 && Math.abs(o.r - t.r) < 0.01;
+      const isBelow = Math.abs(o.r - (t.r + 1)) < 0.01 && Math.abs(o.c - t.c) < 0.01;
+      if (isRight || isBelow) refreshTileShadow(o);
+    });
+    // When inner head tile is restored, re-clip body tiles at (c=11, r=3) and (c=11, r=4)
+    if (t.z === 0 && Math.abs(t.c - 12) < 0.01) {
+      [3, 4].forEach(r => {
+        const body = tiles.find(o => !o.removed && o.z === 0 && o.c === 11 && o.r === r);
+        if (body) refreshThickness(body);
+      });
+    }
+  });
+  selected = null; matches--;
+  score = Math.max(0, score - 10);
+  updateStats(); refreshFreeState();
+}
+
+function hintMove() {
+  const pair = findAnyMatch();
+  if (!pair) { showToast('No moves available — try Shuffle!'); return; }
+  score = Math.max(0, score - 5);
+  updateStats();
+  pair.forEach(t => {
+    t.el.classList.add('hint');
+    setTimeout(() => t.el && t.el.classList.remove('hint'), 1200);
+  });
+}
+
+function findAnyMatch() {
+  const free = tiles.filter(t => !t.removed && isFree(t, tiles));
+  for (let i = 0; i < free.length; i++)
+    for (let j = i + 1; j < free.length; j++)
+      if (tilesMatch(free[i], free[j])) return [free[i], free[j]];
+  return null;
+}
+
+function shuffleRemaining() {
+  const rem  = tiles.filter(t => !t.removed);
+  const data = rem.map(t => ({suit:t.suit, glyph:t.glyph, matchId:t.matchId}));
+  shuffle(data);
+  rem.forEach((t, i) => {
+    t.suit = data[i].suit; t.glyph = data[i].glyph; t.matchId = data[i].matchId;
+    if (t.el) {
+      t.el.className = 'tile suit-' + t.suit;
+      t.el.querySelector('.t-face').innerHTML = buildTileFace(t);
+      // Use onclick not addEventListener — prevents stacking duplicate listeners on reshuffle
+      t.el.onclick = () => onTileClick(t.id);
+    }
+  });
+  selected = null;
+  score = Math.max(0, score - 20);
+  updateStats(); refreshFreeState();
+  showToast('Tiles shuffled! (−20 pts)');
+}
+
+// ════════════════════════════════════════════════════════════════
+//  WIN / NO-MOVES
+// ════════════════════════════════════════════════════════════════
+function checkWin() {
+  if (!tiles.every(t => t.removed)) return;
+  clearInterval(timer); gameOver = true;
+  setTimeout(() => {
+    document.getElementById('msg-title').textContent = '🎉 You Win!';
+    document.getElementById('msg-sub').textContent =
+      `All 144 tiles cleared in ${formatTime(elapsed)} · Score: ${score}`;
+    document.getElementById('btn-shuffle-msg').style.display = 'none';
+    showMessage();
+  }, 440);
+}
+
+function checkNoMoves() {
+  if (findAnyMatch()) return;
+  const remaining = tiles.filter(t => !t.removed).length;
+  setTimeout(() => {
+    if (remaining === 2) {
+      document.getElementById('msg-title').textContent = "That's the Next Best!";
+      document.getElementById('msg-sub').textContent =
+        'Just one stubborn pair left — practically a win. Play again?';
+    } else {
+      document.getElementById('msg-title').textContent = 'No More Moves';
+      document.getElementById('msg-sub').textContent =
+        remaining + ' tiles remain. Shuffle or start fresh.';
+    }
+    document.getElementById('btn-shuffle-msg').style.display = 'inline-block';
+    showMessage();
+  }, 440);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  TIMER & STATS
+// ════════════════════════════════════════════════════════════════
+function startTimer() {
+  clearInterval(timer);
+  timer = setInterval(() => { elapsed++; updateStats(); }, 1000);
+}
+function updateStats() {
+  document.getElementById('stat-tiles').textContent   = tiles.filter(t=>!t.removed).length;
+  document.getElementById('stat-matches').textContent = matches;
+  document.getElementById('stat-time').textContent    = formatTime(elapsed);
+  document.getElementById('stat-score').textContent   = score;
+}
+function formatTime(s) {
+  return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  UI HELPERS
+// ════════════════════════════════════════════════════════════════
+function showMessage() {
+  document.getElementById('message').classList.add('show');
+  const title = document.getElementById('msg-title').textContent;
+  if (title.includes('Win')) {
+    setTimeout(startPurr, 300);
+  }
+}
+function hideMessage() {
+  document.getElementById('message').classList.remove('show');
+  stopPurr();
+}
+function showRules()   {
+  const el = document.getElementById('rules-overlay');
+  el.style.display = 'flex';
+}
+function hideRules()   {
+  document.getElementById('rules-overlay').style.display = 'none';
+}
+
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+// ── Start ──
+newGame();
+</script>
+</body>
+</html>
