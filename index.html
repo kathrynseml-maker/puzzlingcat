@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="favicon.png">
+  <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
 <title>Mahjong Solitaire</title>
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&family=Cinzel:wght@700&display=swap');
 
@@ -61,8 +62,8 @@ h1 span { font-family: 'Noto Serif SC', serif; color: var(--gold); }
 }
 
 .stats {
-  display: flex; gap: 24px; justify-content: center; align-items: center;
-  padding: 8px 20px;
+  display: flex; gap: 12px; justify-content: center; align-items: center;
+  flex-wrap: wrap; padding: 8px 12px;
   background: rgba(40,110,125,0.78);
   border-top: none;
   border-bottom: none;
@@ -90,9 +91,20 @@ h1 span { font-family: 'Noto Serif SC', serif; color: var(--gold); }
 .btn:active { transform: scale(0.95); }
 
 #board-wrap {
-  overflow: auto; width: 100%;
+  overflow: visible; width: 100%;
   display: flex; justify-content: center;
   padding: 10px 10px 24px; z-index: 1;
+  -webkit-overflow-scrolling: touch;
+}
+/* Scale board to fit on small screens */
+@media (max-width: 780px) {
+  #board-wrap {
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+  #board {
+    transform-origin: top left;
+  }
 }
 #board { position: relative; }
 
@@ -108,7 +120,7 @@ h1 span { font-family: 'Noto Serif SC', serif; color: var(--gold); }
 .t-side-b { display: none; }
 
 /* Thickness canvas sits inside .tile, overflow visible so it paints outside */
-.tile { overflow: visible; }
+.tile { overflow: visible; touch-action: manipulation; }
 .t-thickness {
   position: absolute;
   top: 0; left: 0;
@@ -785,6 +797,31 @@ let timer    = null;
 let elapsed  = 0;
 let gameOver = false;
 
+// Scale board to fit screen width on mobile
+function scaleBoardToFit() {
+  const board = document.getElementById('board');
+  const wrap  = document.getElementById('board-wrap');
+  if (!board) return;
+  // Reset first to get natural size
+  board.style.transform = '';
+  board.style.transformOrigin = '';
+  wrap.style.height = '';
+
+  requestAnimationFrame(() => {
+    const boardW = board.offsetWidth || board.scrollWidth;
+    const boardH = board.offsetHeight || board.scrollHeight;
+    const available = window.innerWidth - 24;
+    if (boardW > 0 && boardW > available) {
+      const scale = available / boardW;
+      board.style.transform = 'scale(' + scale + ')';
+      board.style.transformOrigin = 'top center';
+      wrap.style.height = Math.ceil(boardH * scale + 24) + 'px';
+    }
+  });
+}
+window.addEventListener('resize', scaleBoardToFit);
+window.addEventListener('orientationchange', () => setTimeout(scaleBoardToFit, 300));
+
 function newGame() {
   clearInterval(timer);
   elapsed = matches = score = 0;
@@ -806,6 +843,8 @@ function newGame() {
 
   renderBoard();
   startTimer();
+  // Wait for board to fully render before scaling
+  setTimeout(scaleBoardToFit, 300);
 }
 
 function shuffle(arr) {
